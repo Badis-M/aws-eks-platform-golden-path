@@ -1,0 +1,19 @@
+
+# Python
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+# Environment files
+.env
+# Terraform
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.*
+**/*.tfvars
+**/.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+# macOS
+.DS_Store
+

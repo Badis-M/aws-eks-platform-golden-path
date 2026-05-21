@@ -1,0 +1,23 @@
+replicaCount: 1
+
+image:
+  repository: 504441516591.dkr.ecr.eu-west-3.amazonaws.com/incident-api
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+probes:
+  readinessPath: /ready
+  livenessPath: /health
