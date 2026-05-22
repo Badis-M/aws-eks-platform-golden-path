@@ -2,20 +2,33 @@
 
 ## Overview
 
-This document describes the current security posture of the AWS EKS Platform Golden Path project.
+This document describes the security model of the AWS EKS Platform Golden Path project.
 
-The project is a lab environment, but it follows security-first principles where possible:
+The project is a lab environment, but it follows production-inspired security principles:
 
 ```text
 least privilege
 no committed secrets
-ephemeral infrastructure
+temporary credentials
 explicit IAM boundaries
+ephemeral infrastructure
 container hardening
-CI without AWS credentials
+CI/CD without static AWS keys
 ```
 
-## Identity and access
+## Security goals
+
+The main security goals are:
+
+```text
+avoid long-lived credentials
+keep AWS permissions scoped
+separate local and CI/CD access
+make infrastructure reproducible
+make cleanup part of the workflow
+```
+
+## Local AWS access
 
 Local AWS access is performed through a dedicated AWS CLI profile:
 
@@ -23,11 +36,29 @@ Local AWS access is performed through a dedicated AWS CLI profile:
 tf-eks-golden-path
 ```
 
-This keeps the project isolated from other AWS labs or personal profiles.
+This isolates the project from other AWS profiles and prevents accidental usage of unrelated credentials.
+
+Local credentials are not committed to the repository.
+
+The following files must remain local:
+
+```text
+terraform.tfvars
+terraform.tfstate
+terraform.tfstate.backup
+.env
+AWS credentials
+```
+
+A safe example file is committed instead:
+
+```text
+terraform/environments/dev/terraform.tfvars.example
+```
 
 ## EKS access model
 
-EKS access is managed through EKS Access Entries instead of relying only on manual Kubernetes configuration.
+EKS access is managed through EKS Access Entries.
 
 The cluster authentication mode supports:
 
@@ -35,97 +66,235 @@ The cluster authentication mode supports:
 API_AND_CONFIG_MAP
 ```
 
-This allows modern EKS access management while keeping compatibility with the legacy `aws-auth` mechanism.
+This allows modern EKS API-based access management while keeping compatibility with the legacy `aws-auth` ConfigMap model.
 
-## IAM roles
+The dedicated project IAM principal is granted EKS access through Terraform-managed configuration.
 
-Terraform manages IAM roles for:
+## GitHub Actions OIDC
 
-```text
-EKS control plane
-EKS managed node group
-EKS cluster access
-```
+GitHub Actions uses OIDC to assume an AWS IAM role without storing static AWS access keys in GitHub Secrets.
 
-The node group has permission to pull images from ECR through AWS-managed ECR read-only permissions.
+### Why OIDC
 
-## Secrets handling
-
-The repository must not contain:
+Without OIDC, GitHub Actions would require long-lived credentials:
 
 ```text
-AWS access keys
-terraform.tfvars
-terraform.tfstate
-.env files
-local credentials
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
 ```
 
-The `.gitignore` excludes sensitive local files such as:
+Those credentials are risky because they remain valid until manually rotated or deleted.
+
+With OIDC, GitHub Actions receives temporary credentials:
 
 ```text
-terraform.tfvars
-terraform.tfstate
-.terraform/
-.env
+GitHub Actions
+→ temporary OIDC token
+→ AWS IAM OIDC provider
+→ IAM role assumption
+→ temporary AWS credentials
 ```
 
-A safe example variables file is committed instead:
+## OIDC trust boundary
+
+The IAM role trust policy is scoped to the GitHub repository and the `main` branch.
+
+Conceptually, AWS only accepts tokens matching:
 
 ```text
-terraform/environments/dev/terraform.tfvars.example
+repo:Badis-M/aws-eks-platform-golden-path:ref:refs/heads/main
 ```
+
+This prevents unrelated repositories, branches, or workflows from assuming the role.
+
+## Validated OIDC identity
+
+The OIDC smoke test validates the AWS identity with:
+
+```bash
+aws sts get-caller-identity
+```
+
+Expected identity pattern:
+
+```text
+arn:aws:sts::<ACCOUNT_ID>:assumed-role/aws-eks-platform-golden-path-dev-github-actions-ecr-push/GitHubActions
+```
+
+This proves that GitHub Actions successfully assumed the AWS IAM role through OIDC.
+
+## ECR push role
+
+The current GitHub Actions role is limited to ECR image push operations.
+
+It is intentionally not allowed to:
+
+```text
+deploy to EKS
+run terraform apply
+delete infrastructure
+manage IAM broadly
+access unrelated AWS services
+```
+
+## ECR permissions
+
+The role allows only the minimum permissions needed to authenticate and push container images to the `incident-api` ECR repository.
+
+Required registry-level permission:
+
+```text
+ecr:GetAuthorizationToken
+```
+
+Repository-scoped permissions:
+
+```text
+ecr:BatchCheckLayerAvailability
+ecr:BatchGetImage
+ecr:CompleteLayerUpload
+ecr:DescribeRepositories
+ecr:InitiateLayerUpload
+ecr:PutImage
+ecr:UploadLayerPart
+```
+
+`ecr:BatchGetImage` and `ecr:DescribeRepositories` are required because Docker Buildx and ECR may check existing image manifests and repository metadata during the push flow.
+
+## Validated CI/CD flow
+
+The validated ECR push flow is:
+
+```text
+GitHub Actions workflow_dispatch
+→ assume AWS role through OIDC
+→ login to Amazon ECR
+→ setup Docker Buildx
+→ build linux/amd64 image
+→ push tags to ECR
+```
+
+The workflow pushes:
+
+```text
+0.1.0
+commit SHA tag
+```
+
+This provides both a human-readable version tag and an immutable traceable tag.
 
 ## Container security
 
-The FastAPI container is designed to avoid running as root.
-
-Current container hardening decisions:
+The application container is designed with basic hardening:
 
 ```text
 non-root runtime user
-minimal Python runtime image
 no secrets baked into the image
+minimal runtime dependencies
 health endpoints exposed explicitly
 ```
 
-## CI security
+The Docker image is validated by CI before being pushed to ECR.
 
-GitHub Actions currently runs validation only:
+## CI security model
 
-```text
-Python tests
-Docker build
-Helm validation
-Terraform validation
-```
-
-Current workflows do not access AWS and do not require cloud credentials.
-
-## Planned security improvements
-
-Next improvements:
+Current CI workflows:
 
 ```text
-GitHub Actions OIDC for AWS access
-least-privilege IAM role for CI/CD
-remote Terraform state with locking
-AWS Secrets Manager integration
-External Secrets Operator for Kubernetes
-image vulnerability gates
-container scanning in CI
+Python CI
+Docker CI
+Platform CI
+OIDC Smoke Test
+ECR Push
 ```
+
+Only the AWS-related workflows require OIDC permissions.
+
+The baseline validation workflows do not require AWS access:
+
+```text
+Python CI
+Docker CI
+Platform CI
+```
+
+This reduces unnecessary cloud exposure during normal validation.
+
+## Terraform state security
+
+The current project still uses local Terraform state for the V1 lab.
+
+Local state files are ignored by Git:
+
+```text
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+```
+
+Future improvement:
+
+```text
+S3 remote backend
+DynamoDB state locking
+encryption at rest
+restricted state access
+```
+
+## Cleanup model
+
+The project is ephemeral.
+
+After validation, AWS resources should be destroyed:
+
+```bash
+terraform destroy
+```
+
+Validated cleanup includes:
+
+```text
+EKS destroyed
+ECR destroyed
+IAM/OIDC resources destroyed
+Terraform state empty
+```
+
+The ECR repository uses:
+
+```hcl
+force_delete = true
+```
+
+so it can be deleted even when images exist.
 
 ## Security tradeoffs
 
 | Area | Current state | Future improvement |
 |---|---|---|
-| AWS local access | IAM user/profile | AWS SSO or short-lived role assumption |
-| Terraform state | Local state | Remote backend with locking |
-| Kubernetes secrets | Not used yet | AWS Secrets Manager + External Secrets |
-| CI deployment | Not implemented | OIDC + scoped IAM role |
-| Ingress | Not exposed publicly | HTTPS ingress with controlled access |
+| Local AWS access | Dedicated IAM profile | AWS SSO or role assumption |
+| CI AWS access | GitHub OIDC | Separate roles per workflow |
+| Terraform state | Local state | Remote S3 backend with locking |
+| EKS deployment | Manual | Protected deployment workflow |
+| ECR push | Manual workflow_dispatch | Controlled release workflow |
+| Secrets | Not used yet | AWS Secrets Manager + External Secrets Operator |
+| Image security | ECR scan on push | CI vulnerability gate |
 
-## Key principle
+## Future improvements
 
-The project uses AWS CLI and Terraform locally for the first version, but long-lived cloud credentials should not be used in CI/CD. Future deployment automation must use OIDC and short-lived credentials.
+Planned security improvements:
+
+```text
+separate IAM roles for plan, deploy, and destroy
+remote Terraform backend with state locking
+GitHub protected environments
+manual approval gates for deployment
+AWS Secrets Manager integration
+External Secrets Operator
+image vulnerability scanning gates
+Kubernetes network policies
+```
+
+## Interview summary
+
+This project uses GitHub Actions OIDC to let CI/CD workflows assume a scoped AWS IAM role with temporary credentials. The ECR push workflow has been validated without storing AWS access keys in GitHub, and permissions are limited to the container registry workflow only.
