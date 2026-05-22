@@ -7,6 +7,9 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   aws-identity:
     name: Validate AWS OIDC identity
