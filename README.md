@@ -76,6 +76,7 @@ CPU / memory requests and limits
 | API | Python FastAPI |
 | Testing | Pytest |
 | Access management | IAM, EKS Access Entries |
+| CI/CD | GitHub Actions |
 | Cost control | Ephemeral infrastructure, Terraform destroy, no NAT Gateway in V1 |
 
 ## Current V1 status
@@ -92,6 +93,40 @@ Implemented and validated:
 - API deployed on EKS through Helm
 - `/health` and `/ready` validated through port-forward
 - Full infrastructure destroy validated
+- GitHub Actions CI for Python, Docker, Helm, and Terraform validation
+
+## Continuous Integration
+
+The repository includes GitHub Actions workflows to validate the main project layers on every push and pull request.
+
+| Workflow | Purpose |
+|---|---|
+| Python CI | Installs the FastAPI dependencies and runs the pytest test suite |
+| Docker CI | Builds the Incident API Docker image to validate container packaging |
+| Platform CI | Validates Helm and Terraform configuration |
+
+Current CI checks:
+
+```text
+Python CI
+→ checkout
+→ setup Python
+→ install dependencies
+→ run pytest
+
+Docker CI
+→ checkout
+→ docker build
+
+Platform CI
+→ Helm lint
+→ Helm template
+→ Terraform fmt check
+→ Terraform init without backend
+→ Terraform validate
+```
+
+The current CI does not deploy to AWS. Deployment and ECR push automation will be added later using GitHub Actions OIDC and least-privilege IAM roles.
 
 ## Repository structure
 
@@ -232,6 +267,7 @@ Current security decisions:
 - Application container runs as a non-root user
 - ECR image scanning is enabled on push
 - Node group has read-only ECR access through IAM
+- CI workflows currently avoid AWS credentials
 
 Future improvements:
 
@@ -244,9 +280,8 @@ Future improvements:
 
 Next iterations:
 
-- Add Makefile for operator-friendly commands
-- Add GitHub Actions CI for Python, Docker, Helm, and Terraform validation
 - Add GitHub OIDC to remove long-lived AWS credentials from CI/CD
+- Add automated ECR image push through GitHub Actions
 - Add Prometheus and Grafana observability
 - Add FastAPI `/metrics`
 - Add frontend demo application
@@ -256,4 +291,4 @@ Next iterations:
 
 V1 technical foundation is validated.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup.
+The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, and Terraform configuration.
