@@ -29,3 +29,13 @@ module "ecr" {
   environment     = var.environment
   repository_name = "incident-api"
 }
+
+module "iam" {
+  source = "../../modules/iam"
+
+  project_name       = var.project_name
+  environment        = var.environment
+  github_owner       = "Badis-M"
+  github_repository  = "aws-eks-platform-golden-path"
+  ecr_repository_arn = module.ecr.repository_arn
+}

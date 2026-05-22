@@ -27,3 +27,8 @@ output "ecr_repository_url" {
   description = "ECR repository URL."
   value       = module.ecr.repository_url
 }
+
+output "github_actions_ecr_push_role_arn" {
+  description = "IAM role ARN assumed by GitHub Actions through OIDC to push images to ECR."
+  value       = module.iam.github_actions_ecr_push_role_arn
+}
