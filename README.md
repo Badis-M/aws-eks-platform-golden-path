@@ -2,7 +2,7 @@
 
 A production-inspired DevOps / SRE / Platform Engineering lab that demonstrates how to provision, deploy, validate, and destroy an ephemeral Kubernetes platform on AWS.
 
-The project is designed to stay cost-aware while still covering real platform engineering concerns: Terraform modules, EKS, ECR, Helm, Docker, IAM, Kubernetes access management, application health checks, and reproducible workflows.
+The project is designed to stay cost-aware while still covering real platform engineering concerns: Terraform modules, EKS, ECR, Helm, Docker, IAM, Kubernetes access management, application health checks, GitHub Actions OIDC, and reproducible workflows.
 
 ## Project pitch
 
@@ -51,6 +51,8 @@ Managed node group
 ECR repository
 IAM roles
 EKS access entries
+GitHub OIDC provider
+GitHub Actions ECR push role
 ```
 
 Helm deploys:
@@ -75,7 +77,7 @@ CPU / memory requests and limits
 | Kubernetes deployment | Helm |
 | API | Python FastAPI |
 | Testing | Pytest |
-| Access management | IAM, EKS Access Entries |
+| Access management | IAM, EKS Access Entries, GitHub OIDC |
 | CI/CD | GitHub Actions |
 | Cost control | Ephemeral infrastructure, Terraform destroy, no NAT Gateway in V1 |
 
@@ -87,13 +89,15 @@ Implemented and validated:
 - Local Python tests
 - Dockerfile using non-root runtime user
 - Helm chart with probes and resource limits
-- Terraform modules for network, EKS, and ECR
+- Terraform modules for network, EKS, ECR, and IAM/OIDC
 - EKS cluster deployed successfully
-- ECR image push validated
+- ECR image push validated locally
 - API deployed on EKS through Helm
 - `/health` and `/ready` validated through port-forward
 - Full infrastructure destroy validated
 - GitHub Actions CI for Python, Docker, Helm, and Terraform validation
+- GitHub OIDC smoke test validated with AWS STS
+- GitHub Actions ECR image push validated through OIDC without static AWS keys
 
 ## Continuous Integration
 
@@ -104,6 +108,8 @@ The repository includes GitHub Actions workflows to validate the main project la
 | Python CI | Installs the FastAPI dependencies and runs the pytest test suite |
 | Docker CI | Builds the Incident API Docker image to validate container packaging |
 | Platform CI | Validates Helm and Terraform configuration |
+| OIDC Smoke Test | Manually validates that GitHub Actions can assume an AWS IAM role through OIDC |
+| ECR Push | Manually builds and pushes the Incident API image to Amazon ECR through OIDC |
 
 Current CI checks:
 
@@ -126,7 +132,56 @@ Platform CI
 → Terraform validate
 ```
 
-The current CI does not deploy to AWS. Deployment and ECR push automation will be added later using GitHub Actions OIDC and least-privilege IAM roles.
+Manual AWS workflows:
+
+```text
+OIDC Smoke Test
+→ checkout
+→ request GitHub OIDC token
+→ assume AWS IAM role
+→ aws sts get-caller-identity
+
+ECR Push
+→ checkout
+→ assume AWS IAM role through OIDC
+→ login to Amazon ECR
+→ setup Docker Buildx
+→ build linux/amd64 image
+→ push version and commit-SHA tags to ECR
+```
+
+The current CI does not automatically deploy to EKS. AWS deployment automation will be added later through controlled workflows and least-privilege IAM roles.
+
+## GitHub OIDC to AWS
+
+This project uses GitHub Actions OIDC to let selected workflows assume an AWS IAM role without storing long-lived AWS access keys in GitHub Secrets.
+
+The current OIDC flow is:
+
+```text
+GitHub Actions workflow
+→ temporary OIDC token
+→ AWS IAM OIDC provider
+→ IAM role assumption
+→ temporary AWS credentials
+→ ECR push
+```
+
+Security properties:
+
+```text
+No AWS access keys stored in GitHub
+Temporary credentials only
+IAM trust scoped to this repository and main branch
+ECR permissions scoped to the incident-api repository
+No EKS or Terraform apply permissions in the ECR push role
+```
+
+Validated identity example:
+
+```text
+arn:aws:sts::<ACCOUNT_ID>:assumed-role/aws-eks-platform-golden-path-dev-github-actions-ecr-push/GitHubActions
+```
 
 ## Repository structure
 
@@ -219,6 +274,14 @@ Destroy after testing:
 terraform destroy
 ```
 
+To create only the resources needed for OIDC-based ECR push testing:
+
+```bash
+terraform apply \
+  -target=module.ecr \
+  -target=module.iam
+```
+
 ## Helm workflow
 
 Validate the chart:
@@ -254,6 +317,7 @@ Important cost controls in V1:
 - Node group size is minimal
 - ECR lifecycle policy limits stored images
 - `terraform destroy` is part of the expected workflow
+- ECR uses `force_delete = true` to support complete cleanup after tests
 
 Do not leave the EKS cluster running after tests.
 
@@ -267,28 +331,31 @@ Current security decisions:
 - Application container runs as a non-root user
 - ECR image scanning is enabled on push
 - Node group has read-only ECR access through IAM
-- CI workflows currently avoid AWS credentials
+- GitHub Actions uses OIDC for AWS access instead of static AWS keys
+- The ECR push role does not grant EKS deployment or Terraform apply permissions
 
 Future improvements:
 
-- GitHub Actions OIDC for AWS access
-- Least-privilege IAM policies
+- Separate IAM roles for plan, deploy, and destroy workflows
 - Remote Terraform backend with state locking
 - Secrets management through AWS Secrets Manager or External Secrets Operator
+- Image vulnerability gates
+- Protected GitHub environments for deployment approvals
 
 ## Roadmap
 
 Next iterations:
 
-- Add GitHub OIDC to remove long-lived AWS credentials from CI/CD
-- Add automated ECR image push through GitHub Actions
+- Add automated EKS deployment workflow through GitHub Actions
+- Add controlled Terraform plan workflow
+- Add remote Terraform backend with state locking
 - Add Prometheus and Grafana observability
 - Add FastAPI `/metrics`
 - Add frontend demo application
-- Add architecture and runbook documentation
+- Add architecture and runbook documentation improvements
 
 ## Status
 
 V1 technical foundation is validated.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, and Terraform configuration.
+The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, and OIDC-based ECR push automation.
