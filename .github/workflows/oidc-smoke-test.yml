@@ -1,0 +1,26 @@
+name: OIDC Smoke Test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  aws-identity:
+    name: Validate AWS OIDC identity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::504441516591:role/aws-eks-platform-golden-path-dev-github-actions-ecr-push
+          aws-region: eu-west-3
+
+      - name: Validate caller identity
+        run: aws sts get-caller-identity
