@@ -1,0 +1,25 @@
+aws_region  = "eu-west-3"
+aws_profile = "unused-in-ci"
+
+project_name        = "aws-eks-platform-golden-path"
+environment         = "dev"
+admin_principal_arn = "arn:aws:iam::504441516591:user/tf-eks-golden-path"
+
+cluster_version = "1.31"
+
+vpc_cidr = "10.20.0.0/16"
+
+availability_zones = [
+  "eu-west-3a",
+  "eu-west-3b"
+]
+
+public_subnet_cidrs = [
+  "10.20.1.0/24",
+  "10.20.2.0/24"
+]
+
+node_instance_types = ["t3.small"]
+node_desired_size   = 1
+node_min_size       = 1
+node_max_size       = 1
