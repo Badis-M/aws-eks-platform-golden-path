@@ -41,15 +41,4 @@ jobs:
         run: terraform validate
 
       - name: Run Terraform plan
-        run: terraform plan -no-color
-
-      - name: Debug AWS and Terraform profile references
-        run: |
-          echo "AWS_PROFILE=$AWS_PROFILE"
-          echo "AWS_DEFAULT_PROFILE=$AWS_DEFAULT_PROFILE"
-          echo "TF_CLI_ARGS=$TF_CLI_ARGS"
-          echo "TF_CLI_ARGS_init=$TF_CLI_ARGS_init"
-          grep -R "tf-eks-golden-path\\|aws_profile\\|AWS_PROFILE\\|profile" . \
-            --exclude-dir=.terraform \
-            --exclude="terraform.tfstate*" \
-            --exclude="terraform.tfvars" || true
+        run: terraform plan -input=false -no-color -var-file=terraform.ci.tfvars
