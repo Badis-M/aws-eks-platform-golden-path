@@ -16,7 +16,6 @@ terraform {
     key          = "environments/dev/terraform.tfstate"
     region       = "eu-west-3"
     encrypt      = true
-    profile      = "tf-eks-golden-path"
     use_lockfile = true
   }
 }
