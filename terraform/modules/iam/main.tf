@@ -112,3 +112,46 @@ resource "aws_iam_role_policy_attachment" "github_actions_ecr_push" {
   role       = aws_iam_role.github_actions_ecr_push.name
   policy_arn = aws_iam_policy.github_actions_ecr_push.arn
 }
+
+resource "aws_iam_role" "github_actions_terraform_plan" {
+  name               = "${var.project_name}-${var.environment}-github-actions-terraform-plan"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_terraform_plan_readonly" {
+  role       = aws_iam_role.github_actions_terraform_plan.name
+  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+}
+
+data "aws_iam_policy_document" "github_actions_terraform_plan_backend" {
+  statement {
+    sid    = "AllowTerraformBackendStateAccess"
+    effect = "Allow"
+
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:ListBucket"
+    ]
+
+    resources = [
+      "arn:aws:s3:::aws-eks-platform-golden-path-dev-tfstate-504441516591",
+      "arn:aws:s3:::aws-eks-platform-golden-path-dev-tfstate-504441516591/*"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "github_actions_terraform_plan_backend" {
+  name   = "${var.project_name}-${var.environment}-github-actions-terraform-plan-backend"
+  policy = data.aws_iam_policy_document.github_actions_terraform_plan_backend.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_terraform_plan_backend" {
+  role       = aws_iam_role.github_actions_terraform_plan.name
+  policy_arn = aws_iam_policy.github_actions_terraform_plan_backend.arn
+}

@@ -32,3 +32,8 @@ output "github_actions_ecr_push_role_arn" {
   description = "IAM role ARN assumed by GitHub Actions through OIDC to push images to ECR."
   value       = module.iam.github_actions_ecr_push_role_arn
 }
+
+output "github_actions_terraform_plan_role_arn" {
+  description = "IAM role ARN assumed by GitHub Actions through OIDC to run Terraform plan."
+  value       = module.iam.github_actions_terraform_plan_role_arn
+}
