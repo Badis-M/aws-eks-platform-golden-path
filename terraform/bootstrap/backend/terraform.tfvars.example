@@ -1,0 +1,7 @@
+aws_region  = "eu-west-3"
+aws_profile = "tf-eks-golden-path"
+
+project_name = "aws-eks-platform-golden-path"
+environment  = "dev"
+
+state_bucket_name = "aws-eks-platform-golden-path-dev-tfstate-<ACCOUNT_ID>"
