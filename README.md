@@ -2,7 +2,7 @@
 
 A production-inspired DevOps / SRE / Platform Engineering lab that demonstrates how to provision, deploy, validate, and destroy an ephemeral Kubernetes platform on AWS.
 
-The project is designed to stay cost-aware while still covering real platform engineering concerns: Terraform modules, EKS, ECR, Helm, Docker, IAM, Kubernetes access management, application health checks, GitHub Actions OIDC, and reproducible workflows.
+The project is designed to stay cost-aware while still covering real platform engineering concerns: Terraform modules, remote Terraform state, EKS, ECR, Helm, Docker, IAM, Kubernetes access management, application health checks, GitHub Actions OIDC, and reproducible workflows.
 
 ## Project pitch
 
@@ -27,17 +27,27 @@ The platform is intentionally ephemeral: infrastructure is created for testing a
 ```text
 Developer laptop
   |
-  | docker buildx
+  | Terraform
   v
-AWS ECR
+S3 remote backend
   |
-  | image pull
+  | Terraform provisions
   v
-Amazon EKS
+AWS ECR + Amazon EKS
   |
-  | Helm chart
+  | Helm deployment
   v
 FastAPI Incident API
+```
+
+Terraform state is stored remotely:
+
+```text
+S3 bucket
+→ stores terraform.tfstate
+
+S3 native lockfile
+→ protects against concurrent state writes
 ```
 
 Terraform provisions:
@@ -55,16 +65,6 @@ GitHub OIDC provider
 GitHub Actions ECR push role
 ```
 
-Helm deploys:
-
-```text
-Deployment
-Service
-Readiness probe
-Liveness probe
-CPU / memory requests and limits
-```
-
 ## Technology stack
 
 | Area | Tools |
@@ -72,6 +72,7 @@ CPU / memory requests and limits
 | Cloud | AWS |
 | Kubernetes | Amazon EKS |
 | Infrastructure as Code | Terraform |
+| Terraform state | S3 remote backend with native lockfile |
 | Container registry | Amazon ECR |
 | Application packaging | Docker |
 | Kubernetes deployment | Helm |
@@ -90,6 +91,8 @@ Implemented and validated:
 - Dockerfile using non-root runtime user
 - Helm chart with probes and resource limits
 - Terraform modules for network, EKS, ECR, and IAM/OIDC
+- Separate Terraform bootstrap stack for the remote backend
+- S3 remote Terraform backend with versioning, encryption, public access block, and native lockfile
 - EKS cluster deployed successfully
 - ECR image push validated locally
 - API deployed on EKS through Helm
@@ -111,7 +114,7 @@ The repository includes GitHub Actions workflows to validate the main project la
 | OIDC Smoke Test | Manually validates that GitHub Actions can assume an AWS IAM role through OIDC |
 | ECR Push | Manually builds and pushes the Incident API image to Amazon ECR through OIDC |
 
-Current CI checks:
+Automatic CI checks:
 
 ```text
 Python CI
@@ -152,6 +155,51 @@ ECR Push
 
 The current CI does not automatically deploy to EKS. AWS deployment automation will be added later through controlled workflows and least-privilege IAM roles.
 
+## Terraform remote backend
+
+The project uses a separate bootstrap stack to create the Terraform backend resources:
+
+```text
+terraform/bootstrap/backend
+```
+
+This stack creates the S3 bucket used by the main environment backend.
+
+The main environment then uses:
+
+```text
+terraform/environments/dev
+```
+
+with an S3 backend.
+
+Remote backend responsibilities:
+
+```text
+S3 bucket
+→ stores the Terraform state remotely
+
+S3 native lockfile
+→ prevents concurrent state writes
+
+Bucket versioning
+→ keeps previous state versions
+
+Server-side encryption
+→ encrypts state at rest
+
+Public access block
+→ prevents accidental public exposure
+```
+
+The backend uses:
+
+```hcl
+use_lockfile = true
+```
+
+DynamoDB locking is intentionally not used because the older `dynamodb_table` backend parameter is deprecated.
+
 ## GitHub OIDC to AWS
 
 This project uses GitHub Actions OIDC to let selected workflows assume an AWS IAM role without storing long-lived AWS access keys in GitHub Secrets.
@@ -177,12 +225,6 @@ ECR permissions scoped to the incident-api repository
 No EKS or Terraform apply permissions in the ECR push role
 ```
 
-Validated identity example:
-
-```text
-arn:aws:sts::<ACCOUNT_ID>:assumed-role/aws-eks-platform-golden-path-dev-github-actions-ecr-push/GitHubActions
-```
-
 ## Repository structure
 
 ```text
@@ -192,6 +234,8 @@ arn:aws:sts::<ACCOUNT_ID>:assumed-role/aws-eks-platform-golden-path-dev-github-a
 ├── helm/
 │   └── incident-api/
 ├── terraform/
+│   ├── bootstrap/
+│   │   └── backend/
 │   ├── environments/
 │   │   └── dev/
 │   └── modules/
@@ -202,65 +246,23 @@ arn:aws:sts::<ACCOUNT_ID>:assumed-role/aws-eks-platform-golden-path-dev-github-a
 └── docs/
 ```
 
-## Local application workflow
-
-```bash
-cd apps/incident-api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pytest
-```
-
-Run locally:
-
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Validate:
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/ready
-```
-
-## Docker workflow
-
-Build locally:
-
-```bash
-docker build -t incident-api:0.1.0 apps/incident-api
-```
-
-For EKS nodes using x86_64 instances, build and push an AMD64 image:
-
-```bash
-docker buildx build \
-  --platform linux/amd64 \
-  -t <ACCOUNT_ID>.dkr.ecr.eu-west-3.amazonaws.com/incident-api:0.1.0 \
-  apps/incident-api \
-  --push
-```
-
 ## Terraform workflow
 
-Create a local variables file:
+Create backend resources first:
 
 ```bash
-cp terraform/environments/dev/terraform.tfvars.example terraform/environments/dev/terraform.tfvars
+cd terraform/bootstrap/backend
+cp terraform.tfvars.example terraform.tfvars
+terraform init
+terraform plan
+terraform apply
 ```
 
-Edit:
-
-```text
-terraform/environments/dev/terraform.tfvars
-```
-
-Then run:
+Then use the main environment:
 
 ```bash
 cd terraform/environments/dev
+cp terraform.tfvars.example terraform.tfvars
 terraform init
 terraform fmt -recursive
 terraform validate
@@ -268,42 +270,10 @@ terraform plan
 terraform apply
 ```
 
-Destroy after testing:
+Destroy the main platform after testing:
 
 ```bash
 terraform destroy
-```
-
-To create only the resources needed for OIDC-based ECR push testing:
-
-```bash
-terraform apply \
-  -target=module.ecr \
-  -target=module.iam
-```
-
-## Helm workflow
-
-Validate the chart:
-
-```bash
-helm lint helm/incident-api
-helm template incident-api helm/incident-api
-```
-
-Deploy to EKS:
-
-```bash
-helm upgrade --install incident-api helm/incident-api
-```
-
-Validate:
-
-```bash
-kubectl get pods
-kubectl port-forward service/incident-api-incident-api 8080:80
-curl http://localhost:8080/health
-curl http://localhost:8080/ready
 ```
 
 ## Cost awareness
@@ -318,6 +288,7 @@ Important cost controls in V1:
 - ECR lifecycle policy limits stored images
 - `terraform destroy` is part of the expected workflow
 - ECR uses `force_delete = true` to support complete cleanup after tests
+- The backend S3 bucket is intentionally persistent because it stores Terraform state
 
 Do not leave the EKS cluster running after tests.
 
@@ -327,35 +298,26 @@ Current security decisions:
 
 - No static secrets are committed
 - `terraform.tfvars` and `tfstate` files are ignored
+- Terraform state is stored in a private encrypted S3 bucket
+- S3 bucket versioning is enabled for state recovery
+- S3 public access is blocked on the backend bucket
 - EKS access is managed through EKS Access Entries
 - Application container runs as a non-root user
 - ECR image scanning is enabled on push
-- Node group has read-only ECR access through IAM
 - GitHub Actions uses OIDC for AWS access instead of static AWS keys
-- The ECR push role does not grant EKS deployment or Terraform apply permissions
-
-Future improvements:
-
-- Separate IAM roles for plan, deploy, and destroy workflows
-- Remote Terraform backend with state locking
-- Secrets management through AWS Secrets Manager or External Secrets Operator
-- Image vulnerability gates
-- Protected GitHub environments for deployment approvals
 
 ## Roadmap
 
 Next iterations:
 
+- Add controlled Terraform plan workflow through GitHub Actions
 - Add automated EKS deployment workflow through GitHub Actions
-- Add controlled Terraform plan workflow
-- Add remote Terraform backend with state locking
 - Add Prometheus and Grafana observability
 - Add FastAPI `/metrics`
 - Add frontend demo application
-- Add architecture and runbook documentation improvements
 
 ## Status
 
 V1 technical foundation is validated.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, and OIDC-based ECR push automation.
+The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, and OIDC-based ECR push automation.

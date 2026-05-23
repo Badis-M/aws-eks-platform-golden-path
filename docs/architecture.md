@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project demonstrates an ephemeral AWS EKS golden path for deploying a small FastAPI application with Terraform, Docker, ECR, Helm, and Kubernetes.
+This project demonstrates an ephemeral AWS EKS golden path for deploying a small FastAPI application with Terraform, Docker, ECR, Helm, Kubernetes, GitHub Actions, and GitHub OIDC.
 
 The goal is to show a complete platform workflow:
 
@@ -16,25 +16,83 @@ Application code
 → Terraform destroy
 ```
 
-The platform is intentionally minimal and cost-aware while still using production-inspired patterns.
-
 ## High-level architecture
 
 ```text
 Developer laptop
   |
-  | docker buildx --platform linux/amd64
+  | Terraform CLI
   v
-Amazon ECR
+Terraform S3 remote backend
   |
-  | image pull through node IAM role
+  | provision AWS resources
+  v
+AWS infrastructure
+  |
+  | ECR image pull / Helm deployment
   v
 Amazon EKS
   |
-  | Helm chart
+  | Kubernetes Service
   v
 FastAPI Incident API
 ```
+
+## Terraform backend architecture
+
+The project uses a separated bootstrap stack:
+
+```text
+terraform/bootstrap/backend
+```
+
+This stack creates the S3 backend used by the main Terraform environment.
+
+```text
+bootstrap/backend
+  |
+  | creates
+  v
+S3 bucket
+  |
+  | stores state for
+  v
+terraform/environments/dev
+```
+
+## Remote state
+
+Terraform state is stored remotely in S3:
+
+```text
+S3 bucket
+→ terraform.tfstate
+```
+
+The bucket is configured with:
+
+```text
+versioning enabled
+server-side encryption enabled
+public access blocked
+```
+
+## State locking
+
+The backend uses native S3 locking:
+
+```hcl
+use_lockfile = true
+```
+
+This means S3 is used for both:
+
+```text
+state storage
+state lockfile
+```
+
+DynamoDB is intentionally not used for locking because the older `dynamodb_table` backend parameter is deprecated.
 
 ## Infrastructure layer
 
@@ -49,40 +107,15 @@ Managed node group
 ECR repository
 IAM roles
 EKS access entries
+GitHub OIDC provider
+GitHub Actions ECR push role
 ```
 
 The first version avoids NAT Gateway to reduce cost and keep the lab suitable for short-lived demonstrations.
 
-## Application layer
+## CI/CD layer
 
-The application is a Python FastAPI service exposing:
-
-```text
-/health
-/ready
-/incidents
-```
-
-It is packaged as a Docker image and deployed to Kubernetes through Helm.
-
-## Kubernetes layer
-
-Helm deploys:
-
-```text
-Deployment
-Service
-Readiness probe
-Liveness probe
-CPU and memory requests
-CPU and memory limits
-```
-
-The Kubernetes service is currently internal and validated through `kubectl port-forward`.
-
-## CI layer
-
-GitHub Actions validates the project through three workflows:
+GitHub Actions validates the project through automatic workflows:
 
 ```text
 Python CI   → pytest
@@ -90,7 +123,14 @@ Docker CI   → docker build
 Platform CI → Helm lint/template + Terraform fmt/init/validate
 ```
 
-The current CI does not deploy to AWS. AWS deployment automation is planned through GitHub Actions OIDC.
+AWS-related workflows are manual:
+
+```text
+OIDC Smoke Test → validates AWS role assumption through OIDC
+ECR Push        → builds and pushes the Docker image to ECR through OIDC
+```
+
+This avoids cloud side effects on every push.
 
 ## Design choices
 
@@ -100,16 +140,18 @@ The current CI does not deploy to AWS. AWS deployment automation is planned thro
 | ECR instead of Docker Hub | Native AWS IAM integration and private registry workflow |
 | Helm instead of raw manifests | Reusable and configurable Kubernetes deployment |
 | Terraform modules | Reusable infrastructure boundaries |
+| Separate backend bootstrap stack | Avoids creating the backend inside the state it stores |
+| S3 remote state | Keeps Terraform state outside the local machine |
+| S3 native lockfile | Provides locking without DynamoDB |
 | No NAT Gateway in V1 | Lower cost for an ephemeral lab |
 | Port-forward validation | Avoids LoadBalancer cost in the first version |
+| Manual AWS workflows | Prevents accidental AWS changes on every push |
 
 ## Current limitations
 
 - No production ingress yet
 - No HTTPS termination yet
 - No observability stack yet
-- No remote Terraform backend yet
-- No automated AWS deployment from CI yet
+- No automated EKS deployment from CI yet
 - No frontend application yet
-
-These are intentional future iterations, not blockers for the V1 foundation.
+- No protected GitHub environment approval gates yet
