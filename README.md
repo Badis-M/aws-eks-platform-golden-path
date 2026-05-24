@@ -63,6 +63,7 @@ IAM roles
 EKS access entries
 GitHub OIDC provider
 GitHub Actions ECR push role
+GitHub Actions Terraform plan role
 ```
 
 ## Technology stack
@@ -101,18 +102,21 @@ Implemented and validated:
 - GitHub Actions CI for Python, Docker, Helm, and Terraform validation
 - GitHub OIDC smoke test validated with AWS STS
 - GitHub Actions ECR image push validated through OIDC without static AWS keys
+- Manual Terraform Plan workflow validated through GitHub OIDC
+- Terraform Plan workflow protected against concurrent runs
 
 ## Continuous Integration
 
 The repository includes GitHub Actions workflows to validate the main project layers on every push and pull request.
 
-| Workflow | Purpose |
-|---|---|
-| Python CI | Installs the FastAPI dependencies and runs the pytest test suite |
-| Docker CI | Builds the Incident API Docker image to validate container packaging |
-| Platform CI | Validates Helm and Terraform configuration |
-| OIDC Smoke Test | Manually validates that GitHub Actions can assume an AWS IAM role through OIDC |
-| ECR Push | Manually builds and pushes the Incident API image to Amazon ECR through OIDC |
+| Workflow | Trigger | Purpose |
+|---|---|---|
+| Python CI | Push / Pull request | Installs the FastAPI dependencies and runs the pytest test suite |
+| Docker CI | Push / Pull request | Builds the Incident API Docker image to validate container packaging |
+| Platform CI | Push / Pull request | Validates Helm and Terraform configuration |
+| OIDC Smoke Test | Manual | Validates that GitHub Actions can assume an AWS IAM role through OIDC |
+| ECR Push | Manual | Builds and pushes the Incident API image to Amazon ECR through OIDC |
+| Terraform Plan | Manual | Runs `terraform plan` through OIDC without applying infrastructure changes |
 
 Automatic CI checks:
 
@@ -151,9 +155,76 @@ ECR Push
 → setup Docker Buildx
 → build linux/amd64 image
 → push version and commit-SHA tags to ECR
+
+Terraform Plan
+→ checkout
+→ assume AWS IAM role through OIDC
+→ terraform init with S3 backend
+→ terraform validate
+→ terraform plan with CI variables
 ```
 
 The current CI does not automatically deploy to EKS. AWS deployment automation will be added later through controlled workflows and least-privilege IAM roles.
+
+## Terraform Plan workflow
+
+The Terraform Plan workflow is manual and intentionally non-destructive.
+
+It is triggered with:
+
+```text
+workflow_dispatch
+```
+
+It performs:
+
+```text
+GitHub Actions
+→ OIDC token request
+→ AWS IAM role assumption
+→ Terraform backend initialization
+→ Terraform validation
+→ Terraform plan
+```
+
+It does not run:
+
+```text
+terraform apply
+terraform destroy
+```
+
+The workflow uses a dedicated IAM role:
+
+```text
+aws-eks-platform-golden-path-dev-github-actions-terraform-plan
+```
+
+The role is separate from the ECR push role.
+
+Its permissions are intentionally scoped for planning:
+
+```text
+AWS ReadOnlyAccess
+S3 backend state access
+S3 native lockfile access
+```
+
+The workflow uses a committed non-sensitive variables file:
+
+```text
+terraform/environments/dev/terraform.ci.tfvars
+```
+
+This keeps the workflow non-interactive while avoiding duplication of Terraform variables directly inside the GitHub Actions YAML.
+
+The workflow also uses GitHub Actions concurrency:
+
+```text
+concurrency group: terraform-plan-dev
+```
+
+This prevents multiple Terraform Plan runs from using the same remote state at the same time.
 
 ## Terraform remote backend
 
@@ -202,7 +273,7 @@ DynamoDB locking is intentionally not used because the older `dynamodb_table` ba
 
 ## GitHub OIDC to AWS
 
-This project uses GitHub Actions OIDC to let selected workflows assume an AWS IAM role without storing long-lived AWS access keys in GitHub Secrets.
+This project uses GitHub Actions OIDC to let selected workflows assume AWS IAM roles without storing long-lived AWS access keys in GitHub Secrets.
 
 The current OIDC flow is:
 
@@ -212,7 +283,7 @@ GitHub Actions workflow
 → AWS IAM OIDC provider
 → IAM role assumption
 → temporary AWS credentials
-→ ECR push
+→ AWS operation
 ```
 
 Security properties:
@@ -221,9 +292,71 @@ Security properties:
 No AWS access keys stored in GitHub
 Temporary credentials only
 IAM trust scoped to this repository and main branch
+Separate roles per workflow purpose
 ECR permissions scoped to the incident-api repository
-No EKS or Terraform apply permissions in the ECR push role
+Terraform Plan role does not run apply or destroy
 ```
+
+Current GitHub OIDC roles:
+
+```text
+github-actions-ecr-push
+→ pushes Docker images to ECR
+
+github-actions-terraform-plan
+→ runs Terraform plan with read-oriented AWS permissions
+```
+
+## CI/CD dependencies after destroy
+
+A full `terraform destroy` from `terraform/environments/dev` removes the AWS resources required by manual AWS GitHub Actions workflows:
+
+```text
+GitHub OIDC provider
+GitHub Actions Terraform Plan IAM role
+GitHub Actions ECR Push IAM role
+IAM trust policies
+IAM permission policies
+ECR repository
+```
+
+After a full destroy, these workflows will fail until the minimum CI/CD AWS foundation is recreated:
+
+```text
+OIDC Smoke Test
+ECR Push
+Terraform Plan
+```
+
+To recreate only the required CI/CD foundation without provisioning EKS:
+
+```bash
+cd terraform/environments/dev
+
+terraform apply \
+  -target=module.ecr \
+  -target=module.iam
+```
+
+This recreates:
+
+```text
+ECR repository
+GitHub OIDC provider
+GitHub Actions ECR push role
+GitHub Actions Terraform plan role
+IAM policies
+```
+
+This does not recreate the EKS cluster.
+
+The S3 remote backend is managed separately by:
+
+```text
+terraform/bootstrap/backend
+```
+
+The backend should usually remain available even when the ephemeral `dev` environment is destroyed.
 
 ## Repository structure
 
@@ -270,6 +403,14 @@ terraform plan
 terraform apply
 ```
 
+Run a CI-compatible local plan:
+
+```bash
+terraform plan \
+  -input=false \
+  -var-file=terraform.ci.tfvars
+```
+
 Destroy the main platform after testing:
 
 ```bash
@@ -305,19 +446,24 @@ Current security decisions:
 - Application container runs as a non-root user
 - ECR image scanning is enabled on push
 - GitHub Actions uses OIDC for AWS access instead of static AWS keys
+- GitHub Actions roles are separated by purpose
+- Terraform Plan is manual and non-destructive
+- Terraform Plan uses a committed non-sensitive `terraform.ci.tfvars` file
+- Terraform Plan workflow is protected with GitHub Actions concurrency
 
 ## Roadmap
 
 Next iterations:
 
-- Add controlled Terraform plan workflow through GitHub Actions
 - Add automated EKS deployment workflow through GitHub Actions
 - Add Prometheus and Grafana observability
 - Add FastAPI `/metrics`
 - Add frontend demo application
+- Add protected GitHub environments for deployment approvals
+- Add least-privilege custom IAM policy for Terraform Plan
 
 ## Status
 
 V1 technical foundation is validated.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, and OIDC-based ECR push automation.
+The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, OIDC-based ECR push automation, and a manual OIDC-based Terraform Plan workflow.
