@@ -2,7 +2,8 @@ from enum import Enum
 from typing import List
 from uuid import uuid4
 
-from fastapi import FastAPI, Response # type: ignore
+from fastapi import FastAPI, Request, Response # type: ignore
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest # type: ignore
 from pydantic import BaseModel, Field # type: ignore
 
 
@@ -32,6 +33,31 @@ app = FastAPI(
 
 incidents: List[Incident] = []
 
+APP_INFO = Gauge(
+    "incident_api_info",
+    "Incident API application information.",
+    ["app", "version"],
+)
+
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total HTTP requests processed by the Incident API.",
+    ["method", "path", "status_code"],
+)
+
+APP_INFO.labels(app="incident-api", version=app.version).set(1)
+
+
+@app.middleware("http")
+async def record_http_requests(request: Request, call_next):
+    response = await call_next(request)
+    HTTP_REQUESTS_TOTAL.labels(
+        method=request.method,
+        path=request.url.path,
+        status_code=str(response.status_code),
+    ).inc()
+    return response
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -45,11 +71,7 @@ def ready() -> dict[str, str]:
 
 @app.get("/metrics")
 def metrics() -> Response:
-    metrics_payload = """# HELP incident_api_info Incident API application information
-# TYPE incident_api_info gauge
-incident_api_info{app="incident-api",version="0.1.0"} 1
-"""
-    return Response(content=metrics_payload, media_type="text/plain")
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/incidents", response_model=list[Incident])
