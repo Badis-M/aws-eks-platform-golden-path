@@ -105,6 +105,10 @@ Implemented and validated:
 - Manual Terraform Plan workflow validated through GitHub OIDC
 - Terraform Plan workflow protected against concurrent runs
 - Makefile commands for local validation, observability checks, and CI/CD foundation recovery
+- kube-prometheus-stack deployed on EKS for V2 observability validation
+- ServiceMonitor-based Prometheus discovery for the Incident API
+- Prometheus scraping validated with PromQL queries
+- Grafana Explore validated with application request-rate metrics
 
 ## Continuous Integration
 
@@ -167,7 +171,7 @@ Terraform Plan
 
 The current CI does not automatically deploy to EKS. AWS deployment automation will be added later through controlled workflows and least-privilege IAM roles.
 
-## Observability V1
+## Observability
 
 The Incident API exposes a Prometheus-compatible metrics endpoint:
 
@@ -192,9 +196,44 @@ prometheus.io/path: "/metrics"
 prometheus.io/port: "8000"
 ```
 
-This prepares the application for a future Prometheus and Grafana deployment.
+V2 adds a Kubernetes observability stack on EKS:
 
-Prometheus and Grafana are not installed in V1.
+```text
+kube-prometheus-stack
+→ Prometheus Operator
+→ Prometheus
+→ Grafana
+→ kube-state-metrics
+→ node-exporter
+```
+
+The Incident API chart supports an optional `ServiceMonitor` for Prometheus Operator discovery. It is disabled by default so the application can still deploy without the Prometheus CRDs installed.
+
+Standard deployment mode:
+
+```text
+serviceMonitor.enabled = false
+```
+
+Observability deployment mode:
+
+```text
+serviceMonitor.enabled = true
+```
+
+The V2 observability stack was validated end-to-end:
+
+```text
+FastAPI /metrics
+→ ServiceMonitor
+→ Prometheus scrape
+→ PromQL query
+→ Grafana Explore visualization
+```
+
+Grafana shows the request rate grouped by HTTP path:
+
+![Grafana HTTP request rate](docs/images/grafana-http-request-rate.png)
 
 ## Terraform Plan workflow
 
@@ -412,7 +451,7 @@ make app-metrics
 → runs the pytest metrics test
 
 make helm-validate
-→ runs helm lint, helm template, and validates Prometheus scrape annotations
+→ runs helm lint, renders standard and observability Helm modes, validates Prometheus scrape annotations, and validates ServiceMonitor behavior
 
 make observability-check
 → runs both app and Helm observability checks
@@ -427,7 +466,7 @@ ecr-login and ecr-build-push
 OIDC Smoke Test, ECR Push, and Terraform Plan workflows
 → require the GitHub OIDC provider and IAM roles
 
-kubeconfig, kube-pods, helm-deploy, and helm-uninstall
+kubeconfig, kube-pods, helm-deploy, helm-deploy-observability, and helm-uninstall
 → require the EKS cluster
 ```
 
@@ -557,4 +596,4 @@ Next iterations:
 
 V1 technical foundation is validated.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, OIDC-based ECR push automation, a manual OIDC-based Terraform Plan workflow, and Prometheus-compatible application metrics.
+The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, OIDC-based ECR push automation, a manual OIDC-based Terraform Plan workflow, Prometheus-compatible application metrics, ServiceMonitor discovery, Prometheus scraping, and Grafana visualization.

@@ -33,13 +33,19 @@ AWS infrastructure
   v
 Amazon EKS
   |
-  | Kubernetes Service
-  v
-FastAPI Incident API
+  ├── incident-api namespace
+  |     |
+  |     ├── FastAPI Incident API
+  |     ├── ClusterIP Service
+  |     └── ServiceMonitor
   |
-  | /metrics
-  v
-Prometheus-compatible metrics endpoint
+  └── observability namespace
+        |
+        ├── Prometheus Operator
+        ├── Prometheus
+        ├── Grafana
+        ├── kube-state-metrics
+        └── node-exporter
 ```
 
 ## Terraform backend architecture
@@ -161,9 +167,29 @@ prometheus.io/path: "/metrics"
 prometheus.io/port: "8000"
 ```
 
-This makes the workload ready to be discovered by Prometheus later.
+The chart also supports an optional `ServiceMonitor` for Prometheus Operator discovery. The `ServiceMonitor` is disabled by default so the application can deploy without Prometheus CRDs installed.
 
-Prometheus and Grafana are not installed in the current version.
+For V2 observability validation, the application is deployed in the `incident-api` namespace with `ServiceMonitor` enabled through a dedicated values file:
+
+```text
+observability/incident-api-observability-values.yaml
+```
+
+The observability stack is deployed in the `observability` namespace with `kube-prometheus-stack`.
+
+Validated data path:
+
+```text
+FastAPI /metrics
+→ ServiceMonitor
+→ Prometheus scrape
+→ PromQL query
+→ Grafana Explore
+```
+
+Grafana validation:
+
+![Grafana HTTP request rate](images/grafana-http-request-rate.png)
 
 ## Design choices
 
@@ -179,13 +205,16 @@ Prometheus and Grafana are not installed in the current version.
 | No NAT Gateway in V1 | Lower cost for an ephemeral lab |
 | Port-forward validation | Avoids LoadBalancer cost in the first version |
 | Manual AWS workflows | Prevents accidental AWS changes on every push |
-| prometheus-client for application metrics | Provides Prometheus-compatible metrics without deploying the full observability stack yet |
+| prometheus-client for application metrics | Provides Prometheus-compatible metrics from the FastAPI application |
+| Optional ServiceMonitor | Allows Prometheus Operator discovery while keeping the chart deployable without CRDs |
+| kube-prometheus-stack for V2 | Provides Prometheus, Grafana, exporters, and Prometheus Operator using a standard Helm stack |
+| Dedicated namespaces | Separates application workloads from platform observability tooling |
 
 ## Current limitations
 
 - No production ingress yet
 - No HTTPS termination yet
-- No Prometheus or Grafana stack deployed yet
+- Grafana and Prometheus are accessed through port-forward only
 - No automated EKS deployment from CI yet
 - No frontend application yet
 - No protected GitHub environment approval gates yet
