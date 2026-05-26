@@ -1,0 +1,86 @@
+# Minimal kube-prometheus-stack values for the AWS EKS Platform Golden Path V2.
+# This configuration keeps the observability stack private, cost-aware, and suitable for short-lived lab sessions.
+
+fullnameOverride: observability
+
+alertmanager:
+  enabled: false
+
+grafana:
+  enabled: true
+  adminPassword: admin
+
+  service:
+    type: ClusterIP
+
+  ingress:
+    enabled: false
+
+  persistence:
+    enabled: false
+
+  defaultDashboardsEnabled: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+prometheus:
+  enabled: true
+
+  service:
+    type: ClusterIP
+
+  ingress:
+    enabled: false
+
+  prometheusSpec:
+    replicas: 1
+    retention: 2h
+    retentionSize: 1GB
+
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+
+kubeStateMetrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
+
+prometheusOperator:
+  enabled: true
+
+kubeEtcd:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+kubeApiServer:
+  enabled: true
+
+coreDns:
+  enabled: true
+
+kubelet:
+  enabled: true
