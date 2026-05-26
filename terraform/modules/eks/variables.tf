@@ -42,3 +42,8 @@ variable "admin_principal_arn" {
   description = "IAM principal ARN granted cluster admin access through EKS access entries."
   type        = string
 }
+
+variable "github_actions_deploy_role_arn" {
+  description = "IAM role ARN used by GitHub Actions to deploy the Incident API to EKS."
+  type        = string
+}

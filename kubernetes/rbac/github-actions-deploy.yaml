@@ -1,0 +1,77 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: incident-api
+  labels:
+    app.kubernetes.io/name: incident-api
+    app.kubernetes.io/part-of: aws-eks-platform-golden-path
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: incident-api-deployer
+  namespace: incident-api
+  labels:
+    app.kubernetes.io/name: incident-api-deployer
+    app.kubernetes.io/part-of: aws-eks-platform-golden-path
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+      - pods
+      - secrets
+      - serviceaccounts
+      - services
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+
+  - apiGroups:
+      - monitoring.coreos.com
+    resources:
+      - servicemonitors
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: incident-api-deployer
+  namespace: incident-api
+  labels:
+    app.kubernetes.io/name: incident-api-deployer
+    app.kubernetes.io/part-of: aws-eks-platform-golden-path
+subjects:
+  - kind: Group
+    name: incident-api-deployers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: incident-api-deployer
+  apiGroup: rbac.authorization.k8s.io

@@ -49,6 +49,10 @@ jobs:
           helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml | grep 'interval: 15s'
           helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml | grep 'release: observability'
 
+      - name: Validate Kubernetes RBAC manifests
+        run: |
+          ruby -e 'require "yaml"; docs = YAML.load_stream(File.read(ARGV[0])); abort("no YAML documents found") if docs.empty?; docs.each_with_index { |doc, index| abort("empty YAML document #{index + 1}") if doc.nil?; abort("missing apiVersion in document #{index + 1}") unless doc["apiVersion"]; abort("missing kind in document #{index + 1}") unless doc["kind"]; abort("missing metadata.name in document #{index + 1}") unless doc.dig("metadata", "name") }; puts "Kubernetes RBAC YAML validation passed"' kubernetes/rbac/github-actions-deploy.yaml
+
   terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest

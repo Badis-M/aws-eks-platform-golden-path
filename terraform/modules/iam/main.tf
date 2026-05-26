@@ -12,6 +12,10 @@ data "tls_certificate" "github_actions" {
   url = "https://token.actions.githubusercontent.com"
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
 resource "aws_iam_openid_connect_provider" "github_actions" {
   url = "https://token.actions.githubusercontent.com"
 
@@ -154,4 +158,78 @@ resource "aws_iam_policy" "github_actions_terraform_plan_backend" {
 resource "aws_iam_role_policy_attachment" "github_actions_terraform_plan_backend" {
   role       = aws_iam_role.github_actions_terraform_plan.name
   policy_arn = aws_iam_policy.github_actions_terraform_plan_backend.arn
+}
+
+resource "aws_iam_role" "github_actions_deploy" {
+  name               = "${var.project_name}-${var.environment}-github-actions-deploy"
+  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
+
+  tags = local.common_tags
+}
+
+data "aws_iam_policy_document" "github_actions_deploy" {
+  statement {
+    sid    = "AllowCallerIdentityValidation"
+    effect = "Allow"
+
+    actions = [
+      "sts:GetCallerIdentity"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowEcrAuthorization"
+    effect = "Allow"
+
+    actions = [
+      "ecr:GetAuthorizationToken"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowIncidentApiImagePush"
+    effect = "Allow"
+
+    actions = [
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:CompleteLayerUpload",
+      "ecr:DescribeRepositories",
+      "ecr:InitiateLayerUpload",
+      "ecr:PutImage",
+      "ecr:UploadLayerPart"
+    ]
+
+    resources = [
+      var.ecr_repository_arn
+    ]
+  }
+
+  statement {
+    sid    = "AllowDescribeDevEksCluster"
+    effect = "Allow"
+
+    actions = [
+      "eks:DescribeCluster"
+    ]
+
+    resources = [
+      "arn:aws:eks:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:cluster/${var.project_name}-${var.environment}-eks"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "github_actions_deploy" {
+  name   = "${var.project_name}-${var.environment}-github-actions-deploy"
+  policy = data.aws_iam_policy_document.github_actions_deploy.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_deploy" {
+  role       = aws_iam_role.github_actions_deploy.name
+  policy_arn = aws_iam_policy.github_actions_deploy.arn
 }

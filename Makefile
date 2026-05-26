@@ -1,6 +1,7 @@
 APP_DIR := apps/incident-api
 HELM_CHART := helm/incident-api
 APP_NAMESPACE := incident-api
+K8S_RBAC_DEPLOY_MANIFEST := kubernetes/rbac/github-actions-deploy.yaml
 TF_DIR := terraform/environments/dev
 
 OBSERVABILITY_VALUES := observability/kube-prometheus-stack-values.yaml
@@ -37,6 +38,7 @@ help:
 	@echo "  make helm-uninstall              Remove Helm release"
 	@echo "  make kubeconfig      Update local kubeconfig for EKS"
 	@echo "  make kube-pods       List Kubernetes pods"
+	@echo "  make k8s-rbac-validate Validate Kubernetes RBAC manifests without requiring EKS"
 	@echo "  make tf-fmt          Format Terraform files"
 	@echo "  make tf-init         Initialize Terraform"
 	@echo "  make tf-init-reconfigure Reinitialize Terraform backend configuration"
@@ -152,6 +154,10 @@ kubeconfig:
 kube-pods:
 	kubectl get pods -A
 
+.PHONY: k8s-rbac-validate
+k8s-rbac-validate:
+	ruby -e 'require "yaml"; docs = YAML.load_stream(File.read(ARGV[0])); abort("no YAML documents found") if docs.empty?; docs.each_with_index { |doc, index| abort("empty YAML document #{index + 1}") if doc.nil?; abort("missing apiVersion in document #{index + 1}") unless doc["apiVersion"]; abort("missing kind in document #{index + 1}") unless doc["kind"]; abort("missing metadata.name in document #{index + 1}") unless doc.dig("metadata", "name") }; puts "Kubernetes RBAC YAML validation passed"' $(K8S_RBAC_DEPLOY_MANIFEST)
+
 .PHONY: tf-fmt
 tf-fmt:
 	cd $(TF_DIR) && terraform fmt -recursive
@@ -186,7 +192,7 @@ tf-destroy:
 
 
 .PHONY: observability-check
-observability-check: app-metrics helm-validate
+observability-check: app-metrics helm-validate k8s-rbac-validate
 
 .PHONY: observability-repo
 observability-repo:

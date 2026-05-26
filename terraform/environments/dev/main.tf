@@ -11,15 +11,16 @@ module "network" {
 module "eks" {
   source = "../../modules/eks"
 
-  project_name        = var.project_name
-  environment         = var.environment
-  admin_principal_arn = var.admin_principal_arn
-  cluster_version     = var.cluster_version
-  subnet_ids          = module.network.public_subnet_ids
-  node_instance_types = var.node_instance_types
-  node_desired_size   = var.node_desired_size
-  node_min_size       = var.node_min_size
-  node_max_size       = var.node_max_size
+  project_name                   = var.project_name
+  environment                    = var.environment
+  admin_principal_arn            = var.admin_principal_arn
+  github_actions_deploy_role_arn = module.iam.github_actions_deploy_role_arn
+  cluster_version                = var.cluster_version
+  subnet_ids                     = module.network.public_subnet_ids
+  node_instance_types            = var.node_instance_types
+  node_desired_size              = var.node_desired_size
+  node_min_size                  = var.node_min_size
+  node_max_size                  = var.node_max_size
 }
 
 module "ecr" {

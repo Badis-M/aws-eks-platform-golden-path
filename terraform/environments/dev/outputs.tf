@@ -37,3 +37,8 @@ output "github_actions_terraform_plan_role_arn" {
   description = "IAM role ARN assumed by GitHub Actions through OIDC to run Terraform plan."
   value       = module.iam.github_actions_terraform_plan_role_arn
 }
+
+output "github_actions_deploy_role_arn" {
+  description = "IAM role ARN assumed by GitHub Actions through OIDC to deploy the Incident API to EKS."
+  value       = module.iam.github_actions_deploy_role_arn
+}

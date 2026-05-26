@@ -135,3 +135,14 @@ resource "aws_eks_access_policy_association" "admin" {
     aws_eks_access_entry.admin
   ]
 }
+
+resource "aws_eks_access_entry" "github_actions_deploy" {
+  cluster_name      = aws_eks_cluster.this.name
+  principal_arn     = var.github_actions_deploy_role_arn
+  type              = "STANDARD"
+  kubernetes_groups = ["incident-api-deployers"]
+
+  depends_on = [
+    aws_eks_cluster.this
+  ]
+}
