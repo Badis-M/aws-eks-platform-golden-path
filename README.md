@@ -174,11 +174,14 @@ The Incident API exposes a Prometheus-compatible metrics endpoint:
 GET /metrics
 ```
 
-Current application metric:
+Current application metrics:
 
 ```text
-incident_api_info{app="incident-api",version="0.1.0"} 1
+incident_api_info{app="incident-api",version="0.1.0"} 1.0
+http_requests_total{method="GET",path="/health",status_code="200"} 1.0
 ```
+
+The metrics endpoint is generated with `prometheus-client` and includes a FastAPI middleware that counts HTTP requests by method, path, and status code.
 
 The Helm chart also adds Prometheus scrape annotations to the pod template:
 
@@ -476,6 +479,7 @@ Current security decisions:
 - Terraform Plan is manual and non-destructive
 - Terraform Plan uses a committed non-sensitive `terraform.ci.tfvars` file
 - Terraform Plan workflow is protected with GitHub Actions concurrency
+- Application metrics are exposed through `prometheus-client` without requiring external credentials
 
 ## Roadmap
 
@@ -491,4 +495,4 @@ Next iterations:
 
 V1 technical foundation is validated.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, OIDC-based ECR push automation, and a manual OIDC-based Terraform Plan workflow.
+The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, OIDC-based ECR push automation, a manual OIDC-based Terraform Plan workflow, and Prometheus-compatible application metrics.
