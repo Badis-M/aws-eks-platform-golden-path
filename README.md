@@ -104,6 +104,7 @@ Implemented and validated:
 - GitHub Actions ECR image push validated through OIDC without static AWS keys
 - Manual Terraform Plan workflow validated through GitHub OIDC
 - Terraform Plan workflow protected against concurrent runs
+- Makefile commands for local validation, observability checks, and CI/CD foundation recovery
 
 ## Continuous Integration
 
@@ -357,11 +358,15 @@ ECR Push
 Terraform Plan
 ```
 
-To recreate only the required CI/CD foundation without provisioning EKS:
+To recreate only the required CI/CD foundation without provisioning EKS, use the Makefile target:
 
 ```bash
-cd terraform/environments/dev
+make ci-foundation-apply
+```
 
+Equivalent Terraform command:
+```bash
+cd terraform/environments/dev
 terraform apply \
   -target=module.ecr \
   -target=module.iam
@@ -386,6 +391,62 @@ terraform/bootstrap/backend
 ```
 
 The backend should usually remain available even when the ephemeral `dev` environment is destroyed.
+
+## Makefile workflow
+
+The repository includes a Makefile to provide operator-friendly commands for local validation, Helm checks, Terraform operations, and AWS workflow prerequisites.
+
+Common local validation commands:
+
+```bash
+make app-test
+make app-metrics
+make helm-validate
+make observability-check
+```
+
+Observability validation:
+
+```text
+make app-metrics
+→ runs the pytest metrics test
+
+make helm-validate
+→ runs helm lint, helm template, and validates Prometheus scrape annotations
+
+make observability-check
+→ runs both app and Helm observability checks
+```
+
+Some commands require AWS resources to exist:
+
+```text
+ecr-login and ecr-build-push
+→ require the ECR repository
+
+OIDC Smoke Test, ECR Push, and Terraform Plan workflows
+→ require the GitHub OIDC provider and IAM roles
+
+kubeconfig, kube-pods, helm-deploy, and helm-uninstall
+→ require the EKS cluster
+```
+
+After a full `terraform destroy` of the `dev` environment, the minimum CI/CD foundation can be recreated without provisioning EKS:
+
+```bash
+make ci-foundation-apply
+```
+
+Equivalent Terraform command:
+
+```bash
+cd terraform/environments/dev
+terraform apply \
+  -target=module.ecr \
+  -target=module.iam
+```
+
+This recreates ECR, the GitHub OIDC provider, GitHub Actions IAM roles, and related IAM policies.
 
 ## Repository structure
 
@@ -480,6 +541,7 @@ Current security decisions:
 - Terraform Plan uses a committed non-sensitive `terraform.ci.tfvars` file
 - Terraform Plan workflow is protected with GitHub Actions concurrency
 - Application metrics are exposed through `prometheus-client` without requiring external credentials
+- Makefile help documents which commands require AWS resources before execution
 
 ## Roadmap
 
