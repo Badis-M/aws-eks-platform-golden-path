@@ -21,3 +21,8 @@ resources:
 probes:
   readinessPath: /ready
   livenessPath: /health
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/path: "/metrics"
+  prometheus.io/port: "8000"
