@@ -16,11 +16,13 @@ help:
 	@echo "Available commands:"
 	@echo "  make app-test        Run FastAPI tests"
 	@echo "  make app-run         Run FastAPI locally"
+	@echo "  make app-metrics     Validate the local Prometheus metrics endpoint"
 	@echo "  make docker-build    Build local Docker image"
 	@echo "  make ecr-login       Authenticate Docker to AWS ECR"
 	@echo "  make ecr-build-push  Build linux/amd64 image and push to ECR"
 	@echo "  make helm-lint       Validate Helm chart"
 	@echo "  make helm-template   Render Helm manifests"
+	@echo "  make helm-validate   Validate Helm chart and rendered observability annotations"
 	@echo "  make helm-deploy     Deploy API with Helm"
 	@echo "  make helm-uninstall  Remove Helm release"
 	@echo "  make kubeconfig      Update local kubeconfig for EKS"
@@ -31,6 +33,20 @@ help:
 	@echo "  make tf-plan         Show Terraform plan"
 	@echo "  make tf-apply        Apply Terraform configuration"
 	@echo "  make tf-destroy      Destroy Terraform-managed infrastructure"
+	@echo "  make ci-foundation-apply  Recreate minimum AWS CI/CD foundation without EKS"
+	@echo "  make observability-check  Validate app metrics and Helm scrape annotations"
+	@echo ""
+	@echo "AWS resource requirements:"
+	@echo "  Backend S3 bucket must exist for Terraform remote state commands."
+	@echo "  ecr-login and ecr-build-push require ECR to exist."
+	@echo "  Manual GitHub AWS workflows require OIDC provider and IAM roles."
+	@echo "  kubeconfig, kube-pods, helm-deploy, and helm-uninstall require the EKS cluster."
+	@echo ""
+	@echo "Minimum AWS CI/CD foundation after a full dev destroy:"
+	@echo "  make ci-foundation-apply"
+	@echo ""
+	@echo "Equivalent Terraform command:"
+	@echo "  cd $(TF_DIR) && terraform apply -target=module.ecr -target=module.iam"
 
 .PHONY: app-test
 app-test:
@@ -39,6 +55,10 @@ app-test:
 .PHONY: app-run
 app-run:
 	cd $(APP_DIR) && uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+.PHONY: app-metrics
+app-metrics:
+	cd $(APP_DIR) && pytest tests/test_health.py -k metrics
 
 .PHONY: docker-build
 docker-build:
@@ -68,6 +88,12 @@ helm-lint:
 .PHONY: helm-template
 helm-template:
 	helm template incident-api $(HELM_CHART)
+
+.PHONY: helm-validate
+helm-validate: helm-lint helm-template
+	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/scrape: "true"'
+	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/path: /metrics'
+	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/port: "8000"'
 
 .PHONY: helm-deploy
 helm-deploy:
@@ -108,6 +134,13 @@ tf-plan:
 tf-apply:
 	cd $(TF_DIR) && terraform apply
 
+.PHONY: ci-foundation-apply
+ci-foundation-apply:
+	cd $(TF_DIR) && terraform apply -target=module.ecr -target=module.iam
+
 .PHONY: tf-destroy
 tf-destroy:
 	cd $(TF_DIR) && terraform destroy
+
+.PHONY: observability-check
+observability-check: app-metrics helm-validate
