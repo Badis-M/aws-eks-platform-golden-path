@@ -11,6 +11,7 @@ OBSERVABILITY_CHART := prometheus-community/kube-prometheus-stack
 
 AWS_REGION ?= eu-west-3
 AWS_PROFILE ?= tf-eks-golden-path
+AWS_SDK_LOAD_CONFIG ?= 1
 CLUSTER_NAME ?= aws-eks-platform-golden-path-dev-eks
 IMAGE_TAG ?= 0.1.0
 ECR_REPOSITORY ?= incident-api
@@ -38,6 +39,7 @@ help:
 	@echo "  make kube-pods       List Kubernetes pods"
 	@echo "  make tf-fmt          Format Terraform files"
 	@echo "  make tf-init         Initialize Terraform"
+	@echo "  make tf-init-reconfigure Reinitialize Terraform backend configuration"
 	@echo "  make tf-validate     Validate Terraform configuration"
 	@echo "  make tf-plan         Show Terraform plan"
 	@echo "  make tf-apply        Apply Terraform configuration"
@@ -51,6 +53,7 @@ help:
 	@echo ""
 	@echo "AWS resource requirements:"
 	@echo "  Backend S3 bucket must exist for Terraform remote state commands."
+	@echo "  Terraform commands use AWS_PROFILE=$(AWS_PROFILE) and AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG)."
 	@echo "  ecr-login and ecr-build-push require ECR to exist."
 	@echo "  Manual GitHub AWS workflows require OIDC provider and IAM roles."
 	@echo "  kubeconfig, kube-pods, helm-deploy, helm-deploy-observability, helm-uninstall, and observability install/uninstall require the EKS cluster."
@@ -155,27 +158,31 @@ tf-fmt:
 
 .PHONY: tf-init
 tf-init:
-	cd $(TF_DIR) && terraform init
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform init
+
+.PHONY: tf-init-reconfigure
+tf-init-reconfigure:
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform init -reconfigure
 
 .PHONY: tf-validate
 tf-validate:
-	cd $(TF_DIR) && terraform validate
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform validate
 
 .PHONY: tf-plan
 tf-plan:
-	cd $(TF_DIR) && terraform plan
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform plan
 
 .PHONY: tf-apply
 tf-apply:
-	cd $(TF_DIR) && terraform apply
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform apply
 
 .PHONY: ci-foundation-apply
 ci-foundation-apply:
-	cd $(TF_DIR) && terraform apply -target=module.ecr -target=module.iam
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform apply -target=module.ecr -target=module.iam
 
 .PHONY: tf-destroy
 tf-destroy:
-	cd $(TF_DIR) && terraform destroy
+	cd $(TF_DIR) && AWS_PROFILE=$(AWS_PROFILE) AWS_SDK_LOAD_CONFIG=$(AWS_SDK_LOAD_CONFIG) terraform destroy
 
 
 .PHONY: observability-check

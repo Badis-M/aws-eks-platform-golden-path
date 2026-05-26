@@ -231,7 +231,17 @@ FastAPI /metrics
 → Grafana Explore visualization
 ```
 
-Grafana shows the request rate grouped by HTTP path:
+### Observability demo
+
+The screenshot below shows Grafana Explore querying Prometheus metrics scraped from the Incident API through a `ServiceMonitor`.
+
+```promql
+sum by (path) (
+  rate(http_requests_total{namespace="incident-api",path=~"/health|/ready|/metrics"}[5m])
+)
+```
+
+This validates that Prometheus collects application metrics from EKS and that Grafana can visualize request rates by route.
 
 ![Grafana HTTP request rate](docs/images/grafana-http-request-rate.png)
 
@@ -495,6 +505,9 @@ This recreates ECR, the GitHub OIDC provider, GitHub Actions IAM roles, and rela
 │   └── incident-api/
 ├── helm/
 │   └── incident-api/
+├── observability/
+│   ├── incident-api-observability-values.yaml
+│   └── kube-prometheus-stack-values.yaml
 ├── terraform/
 │   ├── bootstrap/
 │   │   └── backend/
@@ -506,6 +519,8 @@ This recreates ECR, the GitHub OIDC provider, GitHub Actions IAM roles, and rela
 │       ├── iam/
 │       └── network/
 └── docs/
+    └── images/
+        └── grafana-http-request-rate.png
 ```
 
 ## Terraform workflow
@@ -540,10 +555,10 @@ terraform plan \
   -var-file=terraform.ci.tfvars
 ```
 
-Destroy the main platform after testing:
+Destroy the main platform after testing from the repository root:
 
 ```bash
-terraform destroy
+make tf-destroy
 ```
 
 ## Cost awareness
