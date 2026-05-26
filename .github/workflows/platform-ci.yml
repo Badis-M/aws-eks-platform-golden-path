@@ -29,6 +29,12 @@ jobs:
       - name: Render Helm manifests
         run: helm template incident-api helm/incident-api
 
+      - name: Validate Prometheus scrape annotations
+        run: |
+          helm template incident-api helm/incident-api | grep 'prometheus.io/scrape: "true"'
+          helm template incident-api helm/incident-api | grep 'prometheus.io/path: /metrics'
+          helm template incident-api helm/incident-api | grep 'prometheus.io/port: "8000"'
+
   terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest
