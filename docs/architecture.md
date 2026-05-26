@@ -36,6 +36,10 @@ Amazon EKS
   | Kubernetes Service
   v
 FastAPI Incident API
+  |
+  | /metrics
+  v
+Prometheus-compatible metrics endpoint
 ```
 
 ## Terraform backend architecture
@@ -132,6 +136,32 @@ ECR Push        → builds and pushes the Docker image to ECR through OIDC
 
 This avoids cloud side effects on every push.
 
+## Application observability layer
+
+The FastAPI application exposes a Prometheus-compatible endpoint:
+
+```text
+GET /metrics
+```
+
+The endpoint currently exposes a simple application information metric:
+
+```text
+incident_api_info{app="incident-api",version="0.1.0"} 1
+```
+
+The Helm chart injects Prometheus scrape annotations into the Kubernetes pod template:
+
+```yaml
+prometheus.io/scrape: "true"
+prometheus.io/path: "/metrics"
+prometheus.io/port: "8000"
+```
+
+This makes the workload ready to be discovered by Prometheus later.
+
+Prometheus and Grafana are not installed in the current version.
+
 ## Design choices
 
 | Decision | Reason |
@@ -151,7 +181,7 @@ This avoids cloud side effects on every push.
 
 - No production ingress yet
 - No HTTPS termination yet
-- No observability stack yet
+- No Prometheus or Grafana stack deployed yet
 - No automated EKS deployment from CI yet
 - No frontend application yet
 - No protected GitHub environment approval gates yet

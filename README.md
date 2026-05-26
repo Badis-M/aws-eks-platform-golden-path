@@ -87,10 +87,10 @@ GitHub Actions Terraform plan role
 
 Implemented and validated:
 
-- FastAPI application with `/health`, `/ready`, and incident endpoints
+- FastAPI application with `/health`, `/ready`, `/metrics`, and incident endpoints
 - Local Python tests
 - Dockerfile using non-root runtime user
-- Helm chart with probes and resource limits
+- Helm chart with probes, resource limits, and Prometheus scrape annotations
 - Terraform modules for network, EKS, ECR, and IAM/OIDC
 - Separate Terraform bootstrap stack for the remote backend
 - S3 remote Terraform backend with versioning, encryption, public access block, and native lockfile
@@ -165,6 +165,32 @@ Terraform Plan
 ```
 
 The current CI does not automatically deploy to EKS. AWS deployment automation will be added later through controlled workflows and least-privilege IAM roles.
+
+## Observability V1
+
+The Incident API exposes a Prometheus-compatible metrics endpoint:
+
+```text
+GET /metrics
+```
+
+Current application metric:
+
+```text
+incident_api_info{app="incident-api",version="0.1.0"} 1
+```
+
+The Helm chart also adds Prometheus scrape annotations to the pod template:
+
+```yaml
+prometheus.io/scrape: "true"
+prometheus.io/path: "/metrics"
+prometheus.io/port: "8000"
+```
+
+This prepares the application for a future Prometheus and Grafana deployment.
+
+Prometheus and Grafana are not installed in V1.
 
 ## Terraform Plan workflow
 
@@ -456,8 +482,7 @@ Current security decisions:
 Next iterations:
 
 - Add automated EKS deployment workflow through GitHub Actions
-- Add Prometheus and Grafana observability
-- Add FastAPI `/metrics`
+- Add Prometheus and Grafana deployment on EKS
 - Add frontend demo application
 - Add protected GitHub environments for deployment approvals
 - Add least-privilege custom IAM policy for Terraform Plan
