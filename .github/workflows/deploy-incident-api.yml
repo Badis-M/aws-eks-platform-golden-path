@@ -1,0 +1,127 @@
+---
+name: Deploy Incident API
+
+"on":
+  workflow_dispatch:
+    inputs:
+      enable_observability:
+        description: "Enable ServiceMonitor deployment for Prometheus scraping"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-west-3
+  EKS_CLUSTER_NAME: aws-eks-platform-golden-path-dev-eks
+  ECR_REPOSITORY_NAME: incident-api
+  HELM_RELEASE_NAME: incident-api
+  K8S_NAMESPACE: incident-api
+  APP_PATH: apps/incident-api
+  HELM_CHART_PATH: helm/incident-api
+  OBSERVABILITY_VALUES_FILE: >-
+    observability/incident-api-observability-values.yaml
+
+jobs:
+  deploy:
+    name: Deploy Incident API
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials from GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate AWS identity
+        run: |
+          aws sts get-caller-identity
+
+      - name: Fail fast if EKS cluster does not exist
+        run: |
+          aws eks describe-cluster \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME" \
+            --query "cluster.status" \
+            --output text
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build \
+            --file "$APP_PATH/Dockerfile" \
+            --tag "$ECR_REGISTRY/$ECR_REPOSITORY_NAME:$IMAGE_TAG" \
+            "$APP_PATH"
+
+          docker push "$ECR_REGISTRY/$ECR_REPOSITORY_NAME:$IMAGE_TAG"
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME"
+
+      - name: Deploy Incident API with Helm
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+          ENABLE_OBSERVABILITY: ${{ inputs.enable_observability }}
+        run: |
+          HELM_ARGS=(
+            upgrade --install "$HELM_RELEASE_NAME" "$HELM_CHART_PATH"
+            --namespace "$K8S_NAMESPACE"
+            --create-namespace
+            --set image.repository="$ECR_REGISTRY/$ECR_REPOSITORY_NAME"
+            --set image.tag="$IMAGE_TAG"
+          )
+
+          if [ "$ENABLE_OBSERVABILITY" = "true" ]; then
+            HELM_ARGS+=(
+              --values "$OBSERVABILITY_VALUES_FILE"
+            )
+          fi
+
+          helm "${HELM_ARGS[@]}"
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/"$HELM_RELEASE_NAME" \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=180s
+
+      - name: Check Kubernetes resources
+        run: |
+          kubectl get pods,svc \
+            --namespace "$K8S_NAMESPACE"
+
+      - name: Run in-cluster health checks
+        run: |
+          SERVICE_URL="http://$HELM_RELEASE_NAME.$K8S_NAMESPACE.svc.cluster.local"
+
+          kubectl run incident-api-smoke-test \
+            --namespace "$K8S_NAMESPACE" \
+            --rm \
+            --restart=Never \
+            --image=curlimages/curl:8.10.1 \
+            --command -- sh -c "
+              curl --fail --silent $SERVICE_URL/health &&
+              echo &&
+              curl --fail --silent $SERVICE_URL/ready
+            "
