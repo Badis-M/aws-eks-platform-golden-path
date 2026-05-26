@@ -1,0 +1,9 @@
+# Enables Prometheus Operator ServiceMonitor discovery for the Incident API.
+# Use this only when kube-prometheus-stack CRDs are installed in the cluster.
+
+serviceMonitor:
+  enabled: true
+  interval: 15s
+  path: /metrics
+  labels:
+    release: observability

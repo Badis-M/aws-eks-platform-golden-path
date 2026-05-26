@@ -3,6 +3,7 @@ HELM_CHART := helm/incident-api
 TF_DIR := terraform/environments/dev
 
 OBSERVABILITY_VALUES := observability/kube-prometheus-stack-values.yaml
+INCIDENT_API_OBSERVABILITY_VALUES := observability/incident-api-observability-values.yaml
 OBSERVABILITY_NAMESPACE := observability
 OBSERVABILITY_RELEASE := observability
 OBSERVABILITY_CHART := prometheus-community/kube-prometheus-stack
@@ -26,10 +27,12 @@ help:
 	@echo "  make ecr-login       Authenticate Docker to AWS ECR"
 	@echo "  make ecr-build-push  Build linux/amd64 image and push to ECR"
 	@echo "  make helm-lint       Validate Helm chart"
-	@echo "  make helm-template   Render Helm manifests"
-	@echo "  make helm-validate   Validate Helm chart and rendered observability annotations"
-	@echo "  make helm-deploy     Deploy API with Helm"
-	@echo "  make helm-uninstall  Remove Helm release"
+	@echo "  make helm-template               Render Helm manifests"
+	@echo "  make helm-template-observability Render Helm manifests with ServiceMonitor enabled"
+	@echo "  make helm-validate               Validate Helm chart and observability rendering modes"
+	@echo "  make helm-deploy                 Deploy API with Helm"
+	@echo "  make helm-deploy-observability   Deploy API with ServiceMonitor enabled"
+	@echo "  make helm-uninstall              Remove Helm release"
 	@echo "  make kubeconfig      Update local kubeconfig for EKS"
 	@echo "  make kube-pods       List Kubernetes pods"
 	@echo "  make tf-fmt          Format Terraform files"
@@ -49,7 +52,7 @@ help:
 	@echo "  Backend S3 bucket must exist for Terraform remote state commands."
 	@echo "  ecr-login and ecr-build-push require ECR to exist."
 	@echo "  Manual GitHub AWS workflows require OIDC provider and IAM roles."
-	@echo "  kubeconfig, kube-pods, helm-deploy, helm-uninstall, and observability install/uninstall require the EKS cluster."
+	@echo "  kubeconfig, kube-pods, helm-deploy, helm-deploy-observability, helm-uninstall, and observability install/uninstall require the EKS cluster."
 	@echo ""
 	@echo "Minimum AWS CI/CD foundation after a full dev destroy:"
 	@echo "  make ci-foundation-apply"
@@ -98,15 +101,30 @@ helm-lint:
 helm-template:
 	helm template incident-api $(HELM_CHART)
 
+.PHONY: helm-template-observability
+helm-template-observability:
+	helm template incident-api $(HELM_CHART) \
+		--values $(INCIDENT_API_OBSERVABILITY_VALUES)
+
 .PHONY: helm-validate
-helm-validate: helm-lint helm-template
+helm-validate: helm-lint helm-template helm-template-observability
 	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/scrape: "true"'
 	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/path: /metrics'
 	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/port: "8000"'
+	! helm template incident-api $(HELM_CHART) | grep 'kind: ServiceMonitor'
+	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'kind: ServiceMonitor'
+	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'path: /metrics'
+	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'interval: 15s'
+	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'release: observability'
 
 .PHONY: helm-deploy
 helm-deploy:
 	helm upgrade --install incident-api $(HELM_CHART)
+
+.PHONY: helm-deploy-observability
+helm-deploy-observability:
+	helm upgrade --install incident-api $(HELM_CHART) \
+		--values $(INCIDENT_API_OBSERVABILITY_VALUES)
 
 .PHONY: helm-uninstall
 helm-uninstall:
