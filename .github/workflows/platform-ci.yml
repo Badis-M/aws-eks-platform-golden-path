@@ -35,6 +35,13 @@ jobs:
           helm template incident-api helm/incident-api | grep 'prometheus.io/path: /metrics'
           helm template incident-api helm/incident-api | grep 'prometheus.io/port: "8000"'
 
+      - name: Validate ServiceMonitor rendering
+        run: |
+          helm template incident-api helm/incident-api | grep 'kind: ServiceMonitor'
+          helm template incident-api helm/incident-api | grep 'path: /metrics'
+          helm template incident-api helm/incident-api | grep 'interval: 15s'
+          helm template incident-api helm/incident-api | grep 'release: observability'
+
   terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest
