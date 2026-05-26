@@ -2,6 +2,11 @@ APP_DIR := apps/incident-api
 HELM_CHART := helm/incident-api
 TF_DIR := terraform/environments/dev
 
+OBSERVABILITY_VALUES := observability/kube-prometheus-stack-values.yaml
+OBSERVABILITY_NAMESPACE := observability
+OBSERVABILITY_RELEASE := observability
+OBSERVABILITY_CHART := prometheus-community/kube-prometheus-stack
+
 AWS_REGION ?= eu-west-3
 AWS_PROFILE ?= tf-eks-golden-path
 CLUSTER_NAME ?= aws-eks-platform-golden-path-dev-eks
@@ -34,13 +39,17 @@ help:
 	@echo "  make tf-apply        Apply Terraform configuration"
 	@echo "  make tf-destroy      Destroy Terraform-managed infrastructure"
 	@echo "  make ci-foundation-apply  Recreate minimum AWS CI/CD foundation without EKS"
-	@echo "  make observability-check  Validate app metrics and Helm scrape annotations"
+	@echo "  make observability-check    Validate app metrics and Helm scrape annotations"
+	@echo "  make observability-repo     Add and update Prometheus community Helm repo"
+	@echo "  make observability-template Render kube-prometheus-stack manifests"
+	@echo "  make observability-install  Install kube-prometheus-stack on EKS"
+	@echo "  make observability-uninstall Remove kube-prometheus-stack from EKS"
 	@echo ""
 	@echo "AWS resource requirements:"
 	@echo "  Backend S3 bucket must exist for Terraform remote state commands."
 	@echo "  ecr-login and ecr-build-push require ECR to exist."
 	@echo "  Manual GitHub AWS workflows require OIDC provider and IAM roles."
-	@echo "  kubeconfig, kube-pods, helm-deploy, and helm-uninstall require the EKS cluster."
+	@echo "  kubeconfig, kube-pods, helm-deploy, helm-uninstall, and observability install/uninstall require the EKS cluster."
 	@echo ""
 	@echo "Minimum AWS CI/CD foundation after a full dev destroy:"
 	@echo "  make ci-foundation-apply"
@@ -142,5 +151,28 @@ ci-foundation-apply:
 tf-destroy:
 	cd $(TF_DIR) && terraform destroy
 
+
 .PHONY: observability-check
 observability-check: app-metrics helm-validate
+
+.PHONY: observability-repo
+observability-repo:
+	helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+	helm repo update
+
+.PHONY: observability-template
+observability-template: observability-repo
+	helm template $(OBSERVABILITY_RELEASE) $(OBSERVABILITY_CHART) \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--values $(OBSERVABILITY_VALUES)
+
+.PHONY: observability-install
+observability-install: observability-repo
+	helm upgrade --install $(OBSERVABILITY_RELEASE) $(OBSERVABILITY_CHART) \
+		--namespace $(OBSERVABILITY_NAMESPACE) \
+		--create-namespace \
+		--values $(OBSERVABILITY_VALUES)
+
+.PHONY: observability-uninstall
+observability-uninstall:
+	helm uninstall $(OBSERVABILITY_RELEASE) --namespace $(OBSERVABILITY_NAMESPACE)
