@@ -2,7 +2,7 @@ from enum import Enum
 from typing import List
 from uuid import uuid4
 
-from fastapi import FastAPI # type: ignore
+from fastapi import FastAPI, Response # type: ignore
 from pydantic import BaseModel, Field # type: ignore
 
 
@@ -41,6 +41,15 @@ def health() -> dict[str, str]:
 @app.get("/ready")
 def ready() -> dict[str, str]:
     return {"status": "ready"}
+
+
+@app.get("/metrics")
+def metrics() -> Response:
+    metrics_payload = """# HELP incident_api_info Incident API application information
+# TYPE incident_api_info gauge
+incident_api_info{app="incident-api",version="0.1.0"} 1
+"""
+    return Response(content=metrics_payload, media_type="text/plain")
 
 
 @app.get("/incidents", response_model=list[Incident])
