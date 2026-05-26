@@ -1,5 +1,6 @@
 APP_DIR := apps/incident-api
 HELM_CHART := helm/incident-api
+APP_NAMESPACE := incident-api
 TF_DIR := terraform/environments/dev
 
 OBSERVABILITY_VALUES := observability/kube-prometheus-stack-values.yaml
@@ -53,6 +54,7 @@ help:
 	@echo "  ecr-login and ecr-build-push require ECR to exist."
 	@echo "  Manual GitHub AWS workflows require OIDC provider and IAM roles."
 	@echo "  kubeconfig, kube-pods, helm-deploy, helm-deploy-observability, helm-uninstall, and observability install/uninstall require the EKS cluster."
+	@echo "  helm-deploy and helm-deploy-observability deploy the API into the incident-api namespace."
 	@echo ""
 	@echo "Minimum AWS CI/CD foundation after a full dev destroy:"
 	@echo "  make ci-foundation-apply"
@@ -99,36 +101,42 @@ helm-lint:
 
 .PHONY: helm-template
 helm-template:
-	helm template incident-api $(HELM_CHART)
+	helm template incident-api $(HELM_CHART) \
+		--namespace $(APP_NAMESPACE)
 
 .PHONY: helm-template-observability
 helm-template-observability:
 	helm template incident-api $(HELM_CHART) \
+		--namespace $(APP_NAMESPACE) \
 		--values $(INCIDENT_API_OBSERVABILITY_VALUES)
 
 .PHONY: helm-validate
 helm-validate: helm-lint helm-template helm-template-observability
-	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/scrape: "true"'
-	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/path: /metrics'
-	helm template incident-api $(HELM_CHART) | grep 'prometheus.io/port: "8000"'
-	! helm template incident-api $(HELM_CHART) | grep 'kind: ServiceMonitor'
-	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'kind: ServiceMonitor'
-	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'path: /metrics'
-	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'interval: 15s'
-	helm template incident-api $(HELM_CHART) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'release: observability'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'prometheus.io/scrape: "true"'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'prometheus.io/path: /metrics'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'prometheus.io/port: "8000"'
+	! helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'kind: ServiceMonitor'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'kind: ServiceMonitor'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'path: /metrics'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'interval: 15s'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'release: observability'
 
 .PHONY: helm-deploy
 helm-deploy:
-	helm upgrade --install incident-api $(HELM_CHART)
+	helm upgrade --install incident-api $(HELM_CHART) \
+		--namespace $(APP_NAMESPACE) \
+		--create-namespace
 
 .PHONY: helm-deploy-observability
 helm-deploy-observability:
 	helm upgrade --install incident-api $(HELM_CHART) \
+		--namespace $(APP_NAMESPACE) \
+		--create-namespace \
 		--values $(INCIDENT_API_OBSERVABILITY_VALUES)
 
 .PHONY: helm-uninstall
 helm-uninstall:
-	helm uninstall incident-api
+	helm uninstall incident-api --namespace $(APP_NAMESPACE)
 
 .PHONY: kubeconfig
 kubeconfig:
