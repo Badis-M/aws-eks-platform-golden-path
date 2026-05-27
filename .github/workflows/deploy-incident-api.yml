@@ -21,8 +21,8 @@ env:
   EKS_CLUSTER_NAME: aws-eks-platform-golden-path-dev-eks
   ECR_REPOSITORY_NAME: incident-api
   HELM_RELEASE_NAME: incident-api
-  K8S_DEPLOYMENT_NAME: incident-api-incident-api
-  K8S_SERVICE_NAME: incident-api-incident-api
+  K8S_DEPLOYMENT_NAME: incident-api
+  K8S_SERVICE_NAME: incident-api
   K8S_NAMESPACE: incident-api
   APP_PATH: apps/incident-api
   HELM_CHART_PATH: helm/incident-api
@@ -88,6 +88,7 @@ jobs:
           HELM_ARGS=(
             upgrade --install "$HELM_RELEASE_NAME" "$HELM_CHART_PATH"
             --namespace "$K8S_NAMESPACE"
+            --set fullnameOverride="$HELM_RELEASE_NAME"
             --set image.repository="$ECR_REGISTRY/$ECR_REPOSITORY_NAME"
             --set image.tag="$IMAGE_TAG"
           )
