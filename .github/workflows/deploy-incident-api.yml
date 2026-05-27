@@ -87,7 +87,6 @@ jobs:
           HELM_ARGS=(
             upgrade --install "$HELM_RELEASE_NAME" "$HELM_CHART_PATH"
             --namespace "$K8S_NAMESPACE"
-            --create-namespace
             --set image.repository="$ECR_REGISTRY/$ECR_REPOSITORY_NAME"
             --set image.tag="$IMAGE_TAG"
           )
