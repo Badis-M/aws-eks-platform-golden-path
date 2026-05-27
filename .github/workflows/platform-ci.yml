@@ -53,6 +53,10 @@ jobs:
         run: |
           ruby -e 'require "yaml"; docs = YAML.load_stream(File.read(ARGV[0])); abort("no YAML documents found") if docs.empty?; docs.each_with_index { |doc, index| abort("empty YAML document #{index + 1}") if doc.nil?; abort("missing apiVersion in document #{index + 1}") unless doc["apiVersion"]; abort("missing kind in document #{index + 1}") unless doc["kind"]; abort("missing metadata.name in document #{index + 1}") unless doc.dig("metadata", "name") }; puts "Kubernetes RBAC YAML validation passed"' kubernetes/rbac/github-actions-deploy.yaml
 
+      - name: Validate Kubernetes NetworkPolicy manifests
+        run: |
+          ruby -e 'require "yaml"; docs = YAML.load_stream(File.read(ARGV[0])); abort("no YAML documents found") if docs.empty?; docs.each_with_index { |doc, index| abort("empty YAML document #{index + 1}") if doc.nil?; abort("missing apiVersion in document #{index + 1}") unless doc["apiVersion"]; abort("missing kind in document #{index + 1}") unless doc["kind"]; abort("missing metadata.name in document #{index + 1}") unless doc.dig("metadata", "name"); abort("expected NetworkPolicy in document #{index + 1}") unless doc["kind"] == "NetworkPolicy"; abort("expected networking.k8s.io/v1 in document #{index + 1}") unless doc["apiVersion"] == "networking.k8s.io/v1"; abort("missing spec.podSelector in document #{index + 1}") unless doc.dig("spec", "podSelector"); abort("missing spec.policyTypes in document #{index + 1}") unless doc.dig("spec", "policyTypes") }; puts "Kubernetes NetworkPolicy YAML validation passed"' kubernetes/networkpolicies/incident-api.yaml
+
   terraform:
     name: Validate Terraform
     runs-on: ubuntu-latest
