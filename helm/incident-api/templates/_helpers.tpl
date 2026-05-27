@@ -1,9 +1,13 @@
 {{- define "incident-api.name" -}}
-incident-api
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end }}
 
 {{- define "incident-api.fullname" -}}
-{{ .Release.Name }}-{{ include "incident-api.name" . }}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name (include "incident-api.name" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
 {{- end }}
 
 {{- define "incident-api.labels" -}}
