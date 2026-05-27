@@ -114,10 +114,14 @@ jobs:
       - name: Run in-cluster health checks
         run: |
           SERVICE_URL="http://$K8S_SERVICE_NAME.$K8S_NAMESPACE.svc.cluster.local"
+          SMOKE_TEST_POD="incident-api-smoke-test"
 
-          kubectl run incident-api-smoke-test \
+          kubectl delete pod "$SMOKE_TEST_POD" \
             --namespace "$K8S_NAMESPACE" \
-            --rm \
+            --ignore-not-found
+
+          kubectl run "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE" \
             --restart=Never \
             --image=curlimages/curl:8.10.1 \
             --command -- sh -c "
@@ -125,3 +129,14 @@ jobs:
               echo &&
               curl --fail --silent $SERVICE_URL/ready
             "
+
+          kubectl wait pod "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE" \
+            --for=jsonpath='{.status.phase}'=Succeeded \
+            --timeout=60s
+
+          kubectl logs "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE"
+
+          kubectl delete pod "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE"
