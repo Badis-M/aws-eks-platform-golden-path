@@ -5,7 +5,7 @@ locals {
     ManagedBy   = "Terraform"
   }
 
-  github_main_branch_subject = "repo:${var.github_owner}/${var.github_repository}:ref:refs/heads/main"
+  github_main_branch_subject     = "repo:${var.github_owner}/${var.github_repository}:ref:refs/heads/main"
   github_dev_environment_subject = "repo:${var.github_owner}/${var.github_repository}:environment:dev"
 }
 
@@ -126,9 +126,128 @@ resource "aws_iam_role" "github_actions_terraform_plan" {
   tags = local.common_tags
 }
 
-resource "aws_iam_role_policy_attachment" "github_actions_terraform_plan_readonly" {
+
+data "aws_iam_policy_document" "github_actions_terraform_plan_read" {
+  statement {
+    sid    = "AllowCallerIdentityValidation"
+    effect = "Allow"
+
+    actions = [
+      "sts:GetCallerIdentity"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowEc2ReadForTerraformPlan"
+    effect = "Allow"
+
+    actions = [
+      "ec2:DescribeAddresses",
+      "ec2:DescribeAvailabilityZones",
+      "ec2:DescribeInternetGateways",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeRouteTables",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeTags",
+      "ec2:DescribeVpcAttribute",
+      "ec2:DescribeVpcs"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowEksReadForTerraformPlan"
+    effect = "Allow"
+
+    actions = [
+      "eks:DescribeAccessEntry",
+      "eks:DescribeAccessPolicy",
+      "eks:DescribeCluster",
+      "eks:DescribeNodegroup",
+      "eks:ListAccessEntries",
+      "eks:ListAccessPolicies",
+      "eks:ListAssociatedAccessPolicies",
+      "eks:ListClusters",
+      "eks:ListNodegroups",
+      "eks:ListTagsForResource"
+    ]
+
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "AllowEcrReadForTerraformPlan"
+    effect = "Allow"
+
+    actions = [
+      "ecr:DescribeImages",
+      "ecr:DescribeRepositories",
+      "ecr:GetLifecyclePolicy",
+      "ecr:GetRepositoryPolicy",
+      "ecr:ListTagsForResource"
+    ]
+
+    resources = [
+      var.ecr_repository_arn
+    ]
+  }
+
+  statement {
+    sid    = "AllowIamReadForTerraformPlan"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetOpenIDConnectProvider",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:GetRole",
+      "iam:GetRolePolicy",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
+      "iam:ListPolicyVersions",
+      "iam:ListRolePolicies",
+      "iam:ListRoleTags"
+    ]
+
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.project_name}-${var.environment}-*",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.project_name}-${var.environment}-*"
+    ]
+  }
+
+  statement {
+    sid    = "AllowAwsManagedPolicyReadForTerraformPlan"
+    effect = "Allow"
+
+    actions = [
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion"
+    ]
+
+    resources = [
+      "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+      "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+      "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
+      "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+    ]
+  }
+}
+
+resource "aws_iam_policy" "github_actions_terraform_plan_read" {
+  name   = "${var.project_name}-${var.environment}-github-actions-terraform-plan-read"
+  policy = data.aws_iam_policy_document.github_actions_terraform_plan_read.json
+
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "github_actions_terraform_plan_read" {
   role       = aws_iam_role.github_actions_terraform_plan.name
-  policy_arn = "arn:aws:iam::aws:policy/ReadOnlyAccess"
+  policy_arn = aws_iam_policy.github_actions_terraform_plan_read.arn
 }
 
 data "aws_iam_policy_document" "github_actions_terraform_plan_backend" {
