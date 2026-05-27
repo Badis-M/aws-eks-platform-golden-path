@@ -312,6 +312,251 @@ It is not allowed to:
 - manage cluster-wide Kubernetes resources
 - deploy into arbitrary namespaces
 
+
+## Real V3 validation issues and fixes
+
+The first end-to-end V3 validation exposed several real-world integration
+issues. These fixes are part of the platform learning path and document how
+the manual deployment workflow became production-like.
+
+### Missing GitHub Environment variable
+
+Symptom:
+
+```text
+Credentials could not be loaded, please check your action inputs
+```
+
+Cause:
+
+```text
+The deploy workflow expected AWS_GITHUB_ACTIONS_DEPLOY_ROLE_ARN, but the
+variable was not configured in the GitHub Environment named dev.
+```
+
+Fix:
+
+```text
+Add AWS_GITHUB_ACTIONS_DEPLOY_ROLE_ARN as a GitHub Environment variable under
+Settings -> Environments -> dev.
+```
+
+Why this matters:
+
+```text
+The deploy role ARN is configuration, not a secret. The real security control
+is the AWS OIDC trust policy combined with least-privilege IAM permissions.
+```
+
+### GitHub OIDC environment subject rejected
+
+Symptom:
+
+```text
+Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+Cause:
+
+```text
+The workflow used environment: dev, which changes the GitHub OIDC subject to
+repo:<owner>/<repo>:environment:dev. The IAM trust policy only allowed the
+main branch subject.
+```
+
+Fix:
+
+```text
+Update the IAM trust policy to allow both the main branch subject and the dev
+environment subject.
+```
+
+Valid subjects:
+
+```text
+repo:<owner>/<repo>:ref:refs/heads/main
+repo:<owner>/<repo>:environment:dev
+```
+
+Why this matters:
+
+```text
+GitHub Environments are useful for deployment approvals, but they must be
+reflected in the AWS OIDC trust relationship.
+```
+
+### EKS admin access entry already exists
+
+Symptom:
+
+```text
+ResourceInUseException: The specified access entry resource is already in use
+```
+
+Cause:
+
+```text
+AWS automatically created an EKS access entry for the cluster creator. The
+Terraform module also tried to create the same admin access entry.
+```
+
+Fix:
+
+```text
+Stop managing aws_eks_access_entry.admin in Terraform and remove it from the
+Terraform state with terraform state rm. Keep the admin access policy
+association managed by Terraform.
+```
+
+Why this matters:
+
+```text
+Terraform should not try to create an access entry that AWS already created.
+The GitHub deploy access entry remains Terraform-managed because it is a
+separate least-privilege deployment identity.
+```
+
+### Helm namespace creation forbidden
+
+Symptom:
+
+```text
+namespaces is forbidden
+```
+
+Cause:
+
+```text
+The Helm command used --create-namespace. Creating namespaces is a
+cluster-scoped action, but the GitHub deploy role is intentionally restricted
+to the incident-api namespace.
+```
+
+Fix:
+
+```text
+Remove --create-namespace from the deploy workflow. The namespace is created
+during the manual RBAC bootstrap step.
+```
+
+Why this matters:
+
+```text
+Namespace creation remains an operator/bootstrap responsibility. The GitHub
+deploy role only deploys inside an existing namespace.
+```
+
+### Deployment name mismatch
+
+Symptom:
+
+```text
+deployments.apps "incident-api" not found
+```
+
+Cause:
+
+```text
+The Helm chart generated Kubernetes resources named incident-api-incident-api,
+while the workflow checked for deployment/incident-api.
+```
+
+Fix:
+
+```text
+Add explicit workflow variables for the generated Kubernetes resource names:
+K8S_DEPLOYMENT_NAME and K8S_SERVICE_NAME.
+```
+
+Why this matters:
+
+```text
+Post-deployment checks must validate the actual Kubernetes resources rendered
+by Helm, not an assumed release name.
+```
+
+### kubectl run --rm not valid in GitHub Actions
+
+Symptom:
+
+```text
+error: --rm should only be used for attached containers
+```
+
+Cause:
+
+```text
+kubectl run --rm expects an attached container session. This is not reliable
+for a non-interactive GitHub Actions smoke test.
+```
+
+Fix:
+
+```text
+Create a temporary smoke test Pod, wait until it reaches Succeeded, read its
+logs, then delete it explicitly.
+```
+
+Why this matters:
+
+```text
+CI/CD smoke tests should be deterministic and work in non-interactive runner
+environments.
+```
+
+### Pod logs RBAC permission missing
+
+Symptom:
+
+```text
+cannot get resource "pods/log" in API group "" in the namespace "incident-api"
+```
+
+Cause:
+
+```text
+Kubernetes treats pod logs as the pods/log subresource. The Role allowed pods
+access but did not allow pods/log.
+```
+
+Fix:
+
+```text
+Add a namespace-scoped RBAC rule allowing get on pods/log.
+```
+
+Why this matters:
+
+```text
+Least-privilege RBAC often requires explicit subresources. Reading smoke test
+logs is useful, but it should still be scoped to the application namespace.
+```
+
+### Final V3 validation result
+
+The final successful workflow proves that GitHub Actions can:
+
+- authenticate to AWS through OIDC
+- assume the least-privilege deploy role
+- verify that EKS already exists
+- build the Incident API image
+- push the image to ECR with the commit SHA tag
+- update kubeconfig
+- deploy with Helm
+- wait for the Kubernetes rollout
+- run an in-cluster smoke test
+- clean up the temporary smoke test Pod
+
+The workflow still does not run:
+
+- `terraform apply`
+- `terraform destroy`
+- `eks create-cluster`
+- `eks delete-cluster`
+
+This confirms the V3 goal: controlled manual deployment automation without
+automatic infrastructure creation.
+
 ## Troubleshooting
 
 ### EKS cluster not found
