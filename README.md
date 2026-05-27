@@ -86,7 +86,7 @@ GitHub Actions deploy role
 
 ## Current status
 
--Implemented and validated:
+Implemented and validated:
 
 - FastAPI application with `/health`, `/ready`, `/metrics`, and incident endpoints
 - Local Python tests
@@ -121,6 +121,9 @@ GitHub Actions deploy role
 - Manual deployment workflow validated with observability mode enabled
 - ServiceMonitor creation validated from the deployment workflow
 - Grafana Explore validated after V3 manual deployment
+- Helm `fullnameOverride` support validated for predictable Kubernetes naming
+- Deployment, Service, and ServiceMonitor naming standardized to `incident-api`
+- GitHub Environment `dev` required reviewer gate configured for deployments
 
 ## Continuous Integration
 
@@ -367,6 +370,9 @@ This prevents multiple Terraform Plan runs from using the same remote state at t
 
 V3 adds a controlled manual deployment workflow for the Incident API.
 
+V4 hardens this workflow with predictable Helm resource names and GitHub
+Environment approval.
+
 The workflow is triggered with:
 
 ```text
@@ -413,6 +419,10 @@ incident-api-deployers
 
 The deploy role can manage application resources in the `incident-api` namespace, but it cannot administer the cluster or create namespaces.
 
+The GitHub Environment `dev` is configured with required reviewers. This means
+the deployment must be approved before the workflow can continue to AWS role
+assumption and EKS deployment.
+
 The workflow supports an explicit observability input:
 
 ```text
@@ -428,6 +438,15 @@ observability/incident-api-observability-values.yaml
 This enables the ServiceMonitor mode used by Prometheus Operator.
 
 The observability-enabled mode has been validated end-to-end with ServiceMonitor creation, Prometheus scraping, and Grafana Explore queries.
+
+V4 also standardizes the rendered Kubernetes resource names through Helm
+`fullnameOverride`:
+
+```text
+deployment/incident-api
+service/incident-api
+servicemonitor/incident-api
+```
 
 The full V3 runbook is available in:
 
@@ -506,6 +525,7 @@ ECR permissions scoped to the incident-api repository
 Terraform Plan role does not run apply or destroy
 Deploy role does not create or destroy EKS infrastructure
 Deploy role is constrained by namespace-scoped Kubernetes RBAC
+GitHub Environment dev can require approval before deployment
 ```
 
 Current GitHub OIDC roles:
@@ -742,6 +762,7 @@ Current security decisions:
 - Terraform Plan workflow is protected with GitHub Actions concurrency
 - Application metrics are exposed through `prometheus-client` without requiring external credentials
 - Makefile help documents which commands require AWS resources before execution
+- GitHub Environment `dev` requires reviewer approval before deployment
 
 ## Roadmap
 
@@ -750,7 +771,6 @@ Next iterations:
 - Add a V3 release note and tag `v3.0.0`
 - Add frontend demo application
 - Add least-privilege custom IAM policy for Terraform Plan
-- Add optional protected approval rules for the GitHub Environment `dev`
 
 ## Status
 
@@ -759,5 +779,7 @@ V1 validates the platform foundation: FastAPI, Docker, ECR, Terraform, EKS, Helm
 V2 validates Kubernetes observability with kube-prometheus-stack, Prometheus, Grafana, ServiceMonitor discovery, Prometheus scraping, and Grafana Explore visualization.
 
 V3 validates controlled manual deployment automation. CI runs automatically, but application deployment is triggered manually through GitHub Actions. The workflow assumes a least-privilege AWS role through OIDC, deploys only to an existing EKS cluster, pushes commit-tagged images to ECR, deploys with Helm, and validates the application with an in-cluster smoke test. The same workflow has also been validated with observability mode enabled, including ServiceMonitor creation, Prometheus scraping, and Grafana Explore queries.
+
+V4 has started with production-grade hardening. V4.1 standardizes Helm resource naming with `fullnameOverride`, and V4.2 protects the manual deployment workflow through GitHub Environment required reviewers.
 
 The current project demonstrates a secure, cost-aware, and interview-ready platform golden path from application code to EKS deployment, observability validation, and full AWS cleanup.

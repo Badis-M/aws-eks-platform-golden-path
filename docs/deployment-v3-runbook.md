@@ -39,7 +39,8 @@ be in place:
 - EKS access entry mapping the deploy role to the Kubernetes group
   `incident-api-deployers`.
 - Namespace-scoped Kubernetes RBAC applied manually.
-- GitHub Environment `dev` configured if approval is required.
+- GitHub Environment `dev` configured with required reviewers when deployment
+  approval is required.
 - GitHub variable `AWS_GITHUB_ACTIONS_DEPLOY_ROLE_ARN` configured.
 
 ## Step 1 - Create the infrastructure intentionally
@@ -115,6 +116,9 @@ Actions
 
 Select the target branch, then choose the observability mode.
 
+If the GitHub Environment `dev` requires reviewers, approve the deployment
+before the job can assume the AWS deploy role and continue.
+
 ## Step 5 - Choose observability mode
 
 The workflow input is:
@@ -153,6 +157,7 @@ The workflow performs the following actions:
 
 - checks out the repository
 - authenticates to AWS through GitHub OIDC
+- waits for GitHub Environment `dev` approval when required
 - validates the AWS caller identity
 - fails fast if the EKS cluster does not exist
 - logs in to Amazon ECR
@@ -295,6 +300,10 @@ ResourceNotFoundException
 
 The deploy workflow uses a dedicated least-privilege IAM role.
 
+The workflow targets the GitHub Environment `dev`. When required reviewers are
+configured, deployment must be approved before the job can assume the AWS
+deploy role.
+
 It is allowed to:
 
 - describe the EKS cluster
@@ -311,6 +320,78 @@ It is not allowed to:
 - modify VPC resources
 - manage cluster-wide Kubernetes resources
 - deploy into arbitrary namespaces
+- bypass GitHub Environment approval when required
+
+
+## V4 hardening additions
+
+### Helm fullname override
+
+V4.1 hardens the Helm chart naming model.
+
+The chart now supports:
+
+```text
+nameOverride
+fullnameOverride
+```
+
+The deploy workflow sets:
+
+```text
+fullnameOverride=incident-api
+```
+
+This makes the rendered Kubernetes resources predictable:
+
+```text
+deployment/incident-api
+service/incident-api
+servicemonitor/incident-api
+```
+
+This replaces the previous default names:
+
+```text
+incident-api-incident-api
+```
+
+Why this matters:
+
+```text
+Predictable resource names make rollout checks, smoke tests, monitoring, and
+documentation easier to operate and less error-prone.
+```
+
+### GitHub Environment approval
+
+V4.2 hardens the deployment control plane with GitHub Environment approval.
+
+The deploy job targets:
+
+```text
+environment: dev
+```
+
+The `dev` environment is configured with required reviewers in GitHub.
+
+The deployment flow becomes:
+
+```text
+workflow_dispatch
+-> GitHub Environment dev
+-> required reviewer approval
+-> GitHub OIDC role assumption
+-> EKS deployment
+```
+
+Why this matters:
+
+```text
+The deployment remains manual, auditable, and protected. Human approval happens
+before the AWS deploy role is assumed, while AWS credentials still remain
+temporary and keyless through GitHub OIDC.
+```
 
 
 ## Real V3 validation issues and fixes
