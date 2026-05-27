@@ -64,6 +64,7 @@ EKS access entries
 GitHub OIDC provider
 GitHub Actions ECR push role
 GitHub Actions Terraform plan role
+GitHub Actions deploy role
 ```
 
 ## Technology stack
@@ -80,12 +81,12 @@ GitHub Actions Terraform plan role
 | API | Python FastAPI |
 | Testing | Pytest |
 | Access management | IAM, EKS Access Entries, GitHub OIDC |
-| CI/CD | GitHub Actions |
+| CI/CD | GitHub Actions, workflow_dispatch, GitHub Environments |
 | Cost control | Ephemeral infrastructure, Terraform destroy, no NAT Gateway in V1 |
 
-## Current V1 status
+## Current status
 
-Implemented and validated:
+-Implemented and validated:
 
 - FastAPI application with `/health`, `/ready`, `/metrics`, and incident endpoints
 - Local Python tests
@@ -109,6 +110,17 @@ Implemented and validated:
 - ServiceMonitor-based Prometheus discovery for the Incident API
 - Prometheus scraping validated with PromQL queries
 - Grafana Explore validated with application request-rate metrics
+- Manual Incident API deployment workflow validated through GitHub Actions
+- GitHub Environment `dev` support for controlled deployments
+- Dedicated least-privilege GitHub Actions deploy role
+- EKS access entry for the deploy role mapped to Kubernetes RBAC
+- Namespace-scoped Kubernetes RBAC for application deployment
+- Commit-SHA Docker image tagging from the deployment workflow
+- In-cluster smoke test validating `/health` and `/ready`
+- V3 deployment troubleshooting and fixes documented
+- Manual deployment workflow validated with observability mode enabled
+- ServiceMonitor creation validated from the deployment workflow
+- Grafana Explore validated after V3 manual deployment
 
 ## Continuous Integration
 
@@ -122,6 +134,7 @@ The repository includes GitHub Actions workflows to validate the main project la
 | OIDC Smoke Test | Manual | Validates that GitHub Actions can assume an AWS IAM role through OIDC |
 | ECR Push | Manual | Builds and pushes the Incident API image to Amazon ECR through OIDC |
 | Terraform Plan | Manual | Runs `terraform plan` through OIDC without applying infrastructure changes |
+| Deploy Incident API | Manual | Builds, pushes, deploys, and smoke-tests the API on an existing EKS cluster |
 
 Automatic CI checks:
 
@@ -169,7 +182,21 @@ Terraform Plan
 → terraform plan with CI variables
 ```
 
-The current CI does not automatically deploy to EKS. AWS deployment automation will be added later through controlled workflows and least-privilege IAM roles.
+```text
+Deploy Incident API
+→ checkout
+→ assume AWS deploy role through OIDC
+→ verify that the EKS cluster already exists
+→ login to Amazon ECR
+→ build the Incident API image
+→ push the image with the commit SHA tag
+→ update kubeconfig
+→ deploy with Helm
+→ wait for the Kubernetes rollout
+→ run an in-cluster smoke test against /health and /ready
+```
+
+CI runs automatically, but EKS deployment is intentionally manual. The deployment workflow uses `workflow_dispatch` and can be protected with the GitHub Environment named `dev`.
 
 ## Observability
 
@@ -243,6 +270,37 @@ sum by (path) (
 
 This validates that Prometheus collects application metrics from EKS and that Grafana can visualize request rates by route.
 
+### V3 observability deployment mode
+
+V3 also validates observability through the manual deployment workflow.
+
+When the workflow is triggered with:
+
+```text
+enable_observability: true
+```
+
+Helm loads:
+
+```text
+observability/incident-api-observability-values.yaml
+```
+
+This creates the Incident API `ServiceMonitor` from the GitHub Actions deploy workflow.
+
+The validated V3 observability path is:
+
+```text
+GitHub Actions manual deployment
+→ Helm observability values
+→ ServiceMonitor created in incident-api
+→ Prometheus scrape
+→ PromQL query
+→ Grafana Explore visualization
+```
+
+This confirms that the deployment workflow supports both standard application deployment and observability-enabled deployment.
+
 ![Grafana HTTP request rate](docs/images/grafana-http-request-rate.png)
 
 ## Terraform Plan workflow
@@ -304,6 +362,78 @@ concurrency group: terraform-plan-dev
 ```
 
 This prevents multiple Terraform Plan runs from using the same remote state at the same time.
+
+## Manual deployment workflow
+
+V3 adds a controlled manual deployment workflow for the Incident API.
+
+The workflow is triggered with:
+
+```text
+workflow_dispatch
+```
+
+It is designed to deploy only to an existing EKS cluster. Infrastructure creation remains an explicit operator action performed locally with Terraform.
+
+The manual deployment flow is:
+
+```text
+Operator
+→ make tf-apply
+→ make kubeconfig
+→ kubectl apply -f kubernetes/rbac/github-actions-deploy.yaml
+→ GitHub Actions Deploy Incident API workflow
+→ Helm deployment
+→ rollout check
+→ in-cluster smoke test
+```
+
+The workflow does not run:
+
+```text
+terraform apply
+terraform destroy
+eks create-cluster
+eks delete-cluster
+```
+
+The deployment workflow uses a dedicated IAM role:
+
+```text
+aws-eks-platform-golden-path-dev-github-actions-deploy
+```
+
+This role is authenticated into EKS through an EKS access entry and authorized through namespace-scoped Kubernetes RBAC.
+
+The Kubernetes group used by the access entry is:
+
+```text
+incident-api-deployers
+```
+
+The deploy role can manage application resources in the `incident-api` namespace, but it cannot administer the cluster or create namespaces.
+
+The workflow supports an explicit observability input:
+
+```text
+enable_observability: false | true
+```
+
+When observability is enabled, Helm also loads:
+
+```text
+observability/incident-api-observability-values.yaml
+```
+
+This enables the ServiceMonitor mode used by Prometheus Operator.
+
+The observability-enabled mode has been validated end-to-end with ServiceMonitor creation, Prometheus scraping, and Grafana Explore queries.
+
+The full V3 runbook is available in:
+
+```text
+docs/deployment-v3-runbook.md
+```
 
 ## Terraform remote backend
 
@@ -374,6 +504,8 @@ IAM trust scoped to this repository and main branch
 Separate roles per workflow purpose
 ECR permissions scoped to the incident-api repository
 Terraform Plan role does not run apply or destroy
+Deploy role does not create or destroy EKS infrastructure
+Deploy role is constrained by namespace-scoped Kubernetes RBAC
 ```
 
 Current GitHub OIDC roles:
@@ -384,6 +516,9 @@ github-actions-ecr-push
 
 github-actions-terraform-plan
 → runs Terraform plan with read-oriented AWS permissions
+
+github-actions-deploy
+→ deploys the Incident API to an existing EKS cluster
 ```
 
 ## CI/CD dependencies after destroy
@@ -394,6 +529,7 @@ A full `terraform destroy` from `terraform/environments/dev` removes the AWS res
 GitHub OIDC provider
 GitHub Actions Terraform Plan IAM role
 GitHub Actions ECR Push IAM role
+GitHub Actions deploy IAM role
 IAM trust policies
 IAM permission policies
 ECR repository
@@ -428,6 +564,7 @@ ECR repository
 GitHub OIDC provider
 GitHub Actions ECR push role
 GitHub Actions Terraform plan role
+GitHub Actions deploy role
 IAM policies
 ```
 
@@ -508,6 +645,9 @@ This recreates ECR, the GitHub OIDC provider, GitHub Actions IAM roles, and rela
 ├── observability/
 │   ├── incident-api-observability-values.yaml
 │   └── kube-prometheus-stack-values.yaml
+├── kubernetes/
+│   └── rbac/
+│       └── github-actions-deploy.yaml
 ├── terraform/
 │   ├── bootstrap/
 │   │   └── backend/
@@ -519,6 +659,8 @@ This recreates ECR, the GitHub OIDC provider, GitHub Actions IAM roles, and rela
 │       ├── iam/
 │       └── network/
 └── docs/
+    ├── deployment-v3-design.md
+    ├── deployment-v3-runbook.md
     └── images/
         └── grafana-http-request-rate.png
 ```
@@ -591,6 +733,10 @@ Current security decisions:
 - ECR image scanning is enabled on push
 - GitHub Actions uses OIDC for AWS access instead of static AWS keys
 - GitHub Actions roles are separated by purpose
+- GitHub Actions deployment is manual and environment-aware
+- GitHub Actions deploy role is not a cluster admin
+- Kubernetes RBAC limits the deploy role to the `incident-api` namespace
+- The deploy workflow does not create or destroy EKS infrastructure
 - Terraform Plan is manual and non-destructive
 - Terraform Plan uses a committed non-sensitive `terraform.ci.tfvars` file
 - Terraform Plan workflow is protected with GitHub Actions concurrency
@@ -601,14 +747,17 @@ Current security decisions:
 
 Next iterations:
 
-- Add automated EKS deployment workflow through GitHub Actions
-- Add Prometheus and Grafana deployment on EKS
+- Add a V3 release note and tag `v3.0.0`
 - Add frontend demo application
-- Add protected GitHub environments for deployment approvals
 - Add least-privilege custom IAM policy for Terraform Plan
+- Add optional protected approval rules for the GitHub Environment `dev`
 
 ## Status
 
-V1 technical foundation is validated.
+V1 validates the platform foundation: FastAPI, Docker, ECR, Terraform, EKS, Helm, GitHub Actions, GitHub OIDC, S3 remote backend, and cost-aware cleanup.
 
-The project currently demonstrates a complete manual golden path from application code to EKS deployment and full AWS cleanup, with CI validation for the application, Docker image, Helm chart, Terraform configuration, remote Terraform state, OIDC-based ECR push automation, a manual OIDC-based Terraform Plan workflow, Prometheus-compatible application metrics, ServiceMonitor discovery, Prometheus scraping, and Grafana visualization.
+V2 validates Kubernetes observability with kube-prometheus-stack, Prometheus, Grafana, ServiceMonitor discovery, Prometheus scraping, and Grafana Explore visualization.
+
+V3 validates controlled manual deployment automation. CI runs automatically, but application deployment is triggered manually through GitHub Actions. The workflow assumes a least-privilege AWS role through OIDC, deploys only to an existing EKS cluster, pushes commit-tagged images to ECR, deploys with Helm, and validates the application with an in-cluster smoke test. The same workflow has also been validated with observability mode enabled, including ServiceMonitor creation, Prometheus scraping, and Grafana Explore queries.
+
+The current project demonstrates a secure, cost-aware, and interview-ready platform golden path from application code to EKS deployment, observability validation, and full AWS cleanup.
