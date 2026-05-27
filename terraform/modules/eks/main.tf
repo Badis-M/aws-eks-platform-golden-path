@@ -112,16 +112,6 @@ resource "aws_eks_node_group" "this" {
   ]
 }
 
-resource "aws_eks_access_entry" "admin" {
-  cluster_name  = aws_eks_cluster.this.name
-  principal_arn = var.admin_principal_arn
-  type          = "STANDARD"
-
-  depends_on = [
-    aws_eks_cluster.this
-  ]
-}
-
 resource "aws_eks_access_policy_association" "admin" {
   cluster_name  = aws_eks_cluster.this.name
   principal_arn = var.admin_principal_arn
@@ -132,7 +122,7 @@ resource "aws_eks_access_policy_association" "admin" {
   }
 
   depends_on = [
-    aws_eks_access_entry.admin
+    aws_eks_cluster.this
   ]
 }
 
