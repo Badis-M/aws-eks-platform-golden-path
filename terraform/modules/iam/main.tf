@@ -5,7 +5,8 @@ locals {
     ManagedBy   = "Terraform"
   }
 
-  github_subject = "repo:${var.github_owner}/${var.github_repository}:ref:refs/heads/main"
+  github_main_branch_subject = "repo:${var.github_owner}/${var.github_repository}:ref:refs/heads/main"
+  github_dev_environment_subject = "repo:${var.github_owner}/${var.github_repository}:environment:dev"
 }
 
 data "tls_certificate" "github_actions" {
@@ -60,7 +61,8 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
       variable = "token.actions.githubusercontent.com:sub"
 
       values = [
-        local.github_subject
+        local.github_main_branch_subject,
+        local.github_dev_environment_subject
       ]
     }
   }
