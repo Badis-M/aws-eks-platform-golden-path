@@ -1,5 +1,3 @@
-
-
 # Platform Roadmap
 
 This document describes the future roadmap for the AWS EKS Platform Golden Path.
@@ -64,7 +62,7 @@ Future versions should keep the same project principles:
 - no uncontrolled AWS cost on push
 - clear separation between infrastructure lifecycle and application deployment
 - short-lived cloud environments
-- clean documentation and interview-ready explanations
+- clean documentation and clear technical explanations
 - realistic DevOps, SRE, and Platform Engineering workflows
 
 ## V4 - Production-grade hardening
@@ -72,7 +70,7 @@ Future versions should keep the same project principles:
 Goal: improve the platform from a validated lab into a more production-like
 foundation.
 
-Candidate scope:
+Planned work:
 
 - add proper `fullnameOverride` support to the Helm chart
 - standardize Helm naming across Deployment, Service, and ServiceMonitor
@@ -93,18 +91,11 @@ The platform keeps the same working V3 deployment model, but with cleaner Helm
 conventions, stronger access controls, and more explicit operating boundaries.
 ```
 
-Interview value:
-
-```text
-This version demonstrates security hardening, governance, IAM discipline,
-Kubernetes RBAC maturity, and production-readiness thinking.
-```
-
 ## V5 - SRE alerting and incident operations
 
 Goal: move from observability to operational readiness.
 
-Candidate scope:
+Planned work:
 
 - add Prometheus alert rules
 - alert on Pod availability
@@ -131,18 +122,11 @@ The platform can detect common application and Kubernetes failures, explain
 how to investigate them, and provide clear operator runbooks.
 ```
 
-Interview value:
-
-```text
-This version demonstrates SRE thinking, incident response, alert design,
-operational maturity, and practical troubleshooting.
-```
-
 ## V6 - Progressive delivery and release strategy
 
 Goal: reduce deployment risk with controlled release patterns.
 
-Candidate scope:
+Planned work:
 
 - add Helm rollback documentation
 - add manual rollback workflow
@@ -168,18 +152,11 @@ The deployment process supports safer release operations, explicit image
 promotion, and documented rollback procedures.
 ```
 
-Interview value:
-
-```text
-This version demonstrates release engineering, deployment risk reduction,
-rollback strategy, and operational control.
-```
-
 ## V7 - Platform self-service golden path
 
 Goal: make the project feel like a reusable internal developer platform.
 
-Candidate scope:
+Planned work:
 
 - document how to onboard a new service
 - define required application conventions:
@@ -201,18 +178,11 @@ A developer can follow the platform documentation and onboard a new service
 using the same CI, deployment, observability, and RBAC conventions.
 ```
 
-Interview value:
-
-```text
-This version demonstrates Platform Engineering thinking: building reusable
-paved roads for development teams instead of one-off infrastructure.
-```
-
 ## V8 - FinOps automation and cloud governance
 
 Goal: strengthen the cost-control and governance dimension of the platform.
 
-Candidate scope:
+Planned work:
 
 - document expected AWS cost drivers
 - add AWS Budget or budget alert documentation
@@ -239,18 +209,11 @@ The platform documents and enforces cost-awareness, making cloud spend part of
 the operating model rather than an afterthought.
 ```
 
-Interview value:
-
-```text
-This version demonstrates FinOps awareness, cloud governance, tagging
-discipline, and responsible AWS operations.
-```
-
 ## V9 - DevSecOps and supply-chain security
 
 Goal: add security checks to the delivery pipeline.
 
-Candidate scope:
+Planned work:
 
 - scan Docker images with Trivy
 - scan Terraform code with a security scanner
@@ -278,30 +241,21 @@ The platform validates not only whether the application works, but also
 whether the delivery path meets baseline security expectations.
 ```
 
-Interview value:
-
-```text
-This version demonstrates DevSecOps maturity, supply-chain awareness, and CI/CD
-security controls.
-```
-
 ## V10 - Portfolio polish and public presentation
 
-Goal: make the project easy to understand for recruiters, hiring managers, and
-technical interviewers.
+Goal: make the project easy to understand from the repository, the portfolio,
+and the public project presentation.
 
-Candidate scope:
+Planned work:
 
 - add architecture diagrams
 - add screenshots of GitHub Actions workflows
 - add screenshots of Grafana dashboards
 - add release notes for V1, V2, and V3
 - add a concise project summary for portfolio use
-- add a LinkedIn post draft
-- add interview talking points
 - add a decision log for major architecture choices
 
-Suggested public narrative:
+Suggested project narrative:
 
 ```text
 This project demonstrates a cost-aware AWS EKS golden path with Terraform,
@@ -314,14 +268,6 @@ Expected outcome:
 ```text
 The repository becomes easy to review quickly while still offering enough
 technical depth for senior DevOps, SRE, and Platform Engineering interviews.
-```
-
-Interview value:
-
-```text
-This version demonstrates not only technical implementation, but also the
-ability to communicate architecture, trade-offs, operational practices, and
-project outcomes clearly.
 ```
 
 ## Recommended next order
