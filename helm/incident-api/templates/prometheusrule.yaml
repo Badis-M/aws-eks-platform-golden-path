@@ -1,0 +1,64 @@
+{{- if .Values.alerting.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "incident-api.fullname" . }}
+  labels:
+    {{- include "incident-api.labels" . | nindent 4 }}
+    {{- with .Values.alerting.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: {{ include "incident-api.fullname" . }}.availability
+      rules:
+        {{- if .Values.alerting.rules.apiDown.enabled }}
+        - alert: IncidentAPIDown
+          expr: up{namespace="{{ .Release.Namespace }}", service="{{ include "incident-api.fullname" . }}"} == 0
+          for: {{ .Values.alerting.rules.apiDown.duration }}
+          labels:
+            severity: critical
+            service: incident-api
+          annotations:
+            summary: Incident API target is down
+            description: Prometheus cannot scrape the Incident API target.
+        {{- end }}
+
+        {{- if .Values.alerting.rules.metricsMissing.enabled }}
+        - alert: IncidentAPIMetricsMissing
+          expr: absent(incident_api_info{namespace="{{ .Release.Namespace }}"})
+          for: {{ .Values.alerting.rules.metricsMissing.duration }}
+          labels:
+            severity: warning
+            service: incident-api
+          annotations:
+            summary: Incident API metrics are missing
+            description: The incident_api_info metric is not present in Prometheus.
+        {{- end }}
+
+    - name: {{ include "incident-api.fullname" . }}.runtime
+      rules:
+        {{- if .Values.alerting.rules.highRestartCount.enabled }}
+        - alert: IncidentAPIHighRestartCount
+          expr: increase(kube_pod_container_status_restarts_total{namespace="{{ .Release.Namespace }}", container="incident-api"}[5m]) > 0
+          for: {{ .Values.alerting.rules.highRestartCount.duration }}
+          labels:
+            severity: warning
+            service: incident-api
+          annotations:
+            summary: Incident API container restarted
+            description: The Incident API container restarted at least once during the last 5 minutes.
+        {{- end }}
+
+        {{- if .Values.alerting.rules.high5xxRate.enabled }}
+        - alert: IncidentAPIHigh5xxRate
+          expr: sum(rate(http_requests_total{namespace="{{ .Release.Namespace }}", status=~"5.."}[5m])) > {{ .Values.alerting.rules.high5xxRate.threshold }}
+          for: {{ .Values.alerting.rules.high5xxRate.duration }}
+          labels:
+            severity: critical
+            service: incident-api
+          annotations:
+            summary: Incident API is returning 5xx responses
+            description: The Incident API is returning HTTP 5xx responses.
+        {{- end }}
+{{- end }}

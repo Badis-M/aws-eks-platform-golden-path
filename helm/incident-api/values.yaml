@@ -36,3 +36,22 @@ serviceMonitor:
   path: /metrics
   labels:
     release: observability
+
+alerting:
+  enabled: false
+  labels:
+    release: observability
+  rules:
+    apiDown:
+      enabled: true
+      duration: 2m
+    metricsMissing:
+      enabled: true
+      duration: 5m
+    highRestartCount:
+      enabled: true
+      duration: 5m
+    high5xxRate:
+      enabled: true
+      duration: 5m
+      threshold: 0

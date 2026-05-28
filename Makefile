@@ -19,6 +19,7 @@ ECR_REPOSITORY ?= incident-api
 AWS_ACCOUNT_ID ?= 504441516591
 ECR_REGISTRY := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com
 IMAGE_URI := $(ECR_REGISTRY)/$(ECR_REPOSITORY):$(IMAGE_TAG)
+HELM_FULLNAME_OVERRIDE := incident-api
 
 .PHONY: help
 help:
@@ -33,6 +34,7 @@ help:
 	@echo "  make helm-template               Render Helm manifests"
 	@echo "  make helm-template-observability Render Helm manifests with ServiceMonitor enabled"
 	@echo "  make helm-validate               Validate Helm chart and observability rendering modes"
+	@echo "  make helm-alerting-validate      Validate PrometheusRule rendering modes"
 	@echo "  make helm-deploy                 Deploy API with Helm"
 	@echo "  make helm-deploy-observability   Deploy API with ServiceMonitor enabled"
 	@echo "  make helm-uninstall              Remove Helm release"
@@ -107,35 +109,49 @@ helm-lint:
 .PHONY: helm-template
 helm-template:
 	helm template incident-api $(HELM_CHART) \
-		--namespace $(APP_NAMESPACE)
+		--namespace $(APP_NAMESPACE) \
+		--set fullnameOverride=$(HELM_FULLNAME_OVERRIDE)
 
 .PHONY: helm-template-observability
 helm-template-observability:
 	helm template incident-api $(HELM_CHART) \
 		--namespace $(APP_NAMESPACE) \
+		--set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) \
 		--values $(INCIDENT_API_OBSERVABILITY_VALUES)
 
+
 .PHONY: helm-validate
-helm-validate: helm-lint helm-template helm-template-observability
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'prometheus.io/scrape: "true"'
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'prometheus.io/path: /metrics'
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'prometheus.io/port: "8000"'
-	! helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) | grep 'kind: ServiceMonitor'
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'kind: ServiceMonitor'
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'path: /metrics'
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'interval: 15s'
-	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'release: observability'
+helm-validate: helm-lint helm-template helm-template-observability helm-alerting-validate
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) | grep 'prometheus.io/scrape: "true"'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) | grep 'prometheus.io/path: /metrics'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) | grep 'prometheus.io/port: "8000"'
+	! helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) | grep 'kind: ServiceMonitor'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'kind: ServiceMonitor'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'path: /metrics'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'interval: 15s'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'release: observability'
+
+.PHONY: helm-alerting-validate
+helm-alerting-validate:
+	! helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) | grep 'kind: PrometheusRule'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'kind: PrometheusRule'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'IncidentAPIDown'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'IncidentAPIMetricsMissing'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'IncidentAPIHighRestartCount'
+	helm template incident-api $(HELM_CHART) --namespace $(APP_NAMESPACE) --set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) --values $(INCIDENT_API_OBSERVABILITY_VALUES) | grep 'IncidentAPIHigh5xxRate'
 
 .PHONY: helm-deploy
 helm-deploy:
 	helm upgrade --install incident-api $(HELM_CHART) \
 		--namespace $(APP_NAMESPACE) \
+		--set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) \
 		--create-namespace
 
 .PHONY: helm-deploy-observability
 helm-deploy-observability:
 	helm upgrade --install incident-api $(HELM_CHART) \
 		--namespace $(APP_NAMESPACE) \
+		--set fullnameOverride=$(HELM_FULLNAME_OVERRIDE) \
 		--create-namespace \
 		--values $(INCIDENT_API_OBSERVABILITY_VALUES)
 

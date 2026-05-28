@@ -7,3 +7,8 @@ serviceMonitor:
   path: /metrics
   labels:
     release: observability
+
+alerting:
+  enabled: true
+  labels:
+    release: observability
