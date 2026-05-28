@@ -27,27 +27,106 @@ jobs:
         run: helm lint helm/incident-api
 
       - name: Render Helm manifests
-        run: helm template incident-api helm/incident-api --namespace incident-api
+        run: >-
+          helm template incident-api helm/incident-api
+          --namespace incident-api
+          --set fullnameOverride=incident-api
 
       - name: Render Helm manifests with ServiceMonitor enabled
-        run: helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml
+        run: >-
+          helm template incident-api helm/incident-api
+          --namespace incident-api
+          --set fullnameOverride=incident-api
+          --values observability/incident-api-observability-values.yaml
 
       - name: Validate Prometheus scrape annotations
         run: |
-          helm template incident-api helm/incident-api --namespace incident-api | grep 'prometheus.io/scrape: "true"'
-          helm template incident-api helm/incident-api --namespace incident-api | grep 'prometheus.io/path: /metrics'
-          helm template incident-api helm/incident-api --namespace incident-api | grep 'prometheus.io/port: "8000"'
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            | grep 'prometheus.io/scrape: "true"'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            | grep 'prometheus.io/path: /metrics'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            | grep 'prometheus.io/port: "8000"'
 
       - name: Validate ServiceMonitor disabled by default
         run: |
-          ! helm template incident-api helm/incident-api --namespace incident-api | grep 'kind: ServiceMonitor'
+          ! helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            | grep 'kind: ServiceMonitor'
 
       - name: Validate ServiceMonitor rendering with observability values
         run: |
-          helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml | grep 'kind: ServiceMonitor'
-          helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml | grep 'path: /metrics'
-          helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml | grep 'interval: 15s'
-          helm template incident-api helm/incident-api --namespace incident-api --values observability/incident-api-observability-values.yaml | grep 'release: observability'
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'kind: ServiceMonitor'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'path: /metrics'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'interval: 15s'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'release: observability'
+
+      - name: Validate PrometheusRule disabled by default
+        run: |
+          ! helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            | grep 'kind: PrometheusRule'
+
+      - name: Validate PrometheusRule rendering with observability values
+        run: |
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'kind: PrometheusRule'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'IncidentAPIDown'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'IncidentAPIMetricsMissing'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'IncidentAPIHighRestartCount'
+
+          helm template incident-api helm/incident-api \
+            --namespace incident-api \
+            --set fullnameOverride=incident-api \
+            --values observability/incident-api-observability-values.yaml \
+            | grep 'IncidentAPIHigh5xxRate'
 
       - name: Validate Kubernetes RBAC manifests
         run: |
