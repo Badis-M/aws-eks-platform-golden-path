@@ -1,5 +1,3 @@
-
-
 # New Service Onboarding Checklist
 
 This checklist defines the minimum requirements for onboarding a new service

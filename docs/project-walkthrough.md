@@ -1,5 +1,3 @@
-
-
 # Project Walkthrough
 
 This document explains how the AWS EKS Platform Golden Path evolved from a

@@ -1,5 +1,3 @@
-
-
 # V9 DevSecOps
 
 V9 adds DevSecOps controls to the AWS EKS Platform Golden Path.
