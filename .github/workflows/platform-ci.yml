@@ -9,9 +9,6 @@ on:
 permissions:
   contents: read
 
-env:
-  TRIVY_VERSION: "0.58.1"
-
 jobs:
   security:
     name: Security scan
@@ -19,11 +16,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.32.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
+          version: "v0.70.0"
           scan-type: "fs"
           scan-ref: "."
           severity: "CRITICAL,HIGH"
@@ -36,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Helm
         uses: azure/setup-helm@v5
@@ -166,7 +164,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v4
