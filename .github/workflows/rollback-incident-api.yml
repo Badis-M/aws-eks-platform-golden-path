@@ -1,0 +1,123 @@
+
+
+name: Rollback Incident API
+
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Helm revision to rollback to"
+        required: true
+        type: string
+      enable_observability:
+        description: "Keep observability validation context enabled"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: incident-api-rollback-dev
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-west-3
+  EKS_CLUSTER_NAME: aws-eks-platform-golden-path-dev-eks
+  HELM_RELEASE_NAME: incident-api
+  K8S_DEPLOYMENT_NAME: incident-api
+  K8S_SERVICE_NAME: incident-api
+  K8S_NAMESPACE: incident-api
+
+jobs:
+  rollback:
+    name: Rollback Incident API
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_GITHUB_ACTIONS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Fail fast if EKS cluster does not exist
+        run: |
+          aws eks describe-cluster \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME" \
+            >/dev/null
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --region "$AWS_REGION" \
+            --name "$EKS_CLUSTER_NAME"
+
+      - name: Show Helm release history
+        run: |
+          helm history "$HELM_RELEASE_NAME" \
+            --namespace "$K8S_NAMESPACE"
+
+      - name: Rollback Helm release
+        env:
+          HELM_REVISION: ${{ inputs.revision }}
+        run: |
+          helm rollback "$HELM_RELEASE_NAME" "$HELM_REVISION" \
+            --namespace "$K8S_NAMESPACE" \
+            --wait \
+            --timeout 180s
+
+      - name: Wait for Kubernetes rollout
+        run: |
+          kubectl rollout status deployment/"$K8S_DEPLOYMENT_NAME" \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=180s
+
+      - name: List deployed resources
+        run: |
+          kubectl get pods,svc,servicemonitor,prometheusrule \
+            --namespace "$K8S_NAMESPACE" \
+            --ignore-not-found
+
+      - name: Run in-cluster smoke test
+        run: |
+          SERVICE_URL="http://$K8S_SERVICE_NAME.$K8S_NAMESPACE.svc.cluster.local"
+          SMOKE_TEST_POD="incident-api-rollback-smoke-test"
+
+          kubectl delete pod "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE" \
+            --ignore-not-found
+
+          kubectl run "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE" \
+            --restart=Never \
+            --image=curlimages/curl:8.10.1 \
+            --command -- sh -c "
+              curl --fail --silent $SERVICE_URL/health &&
+              echo &&
+              curl --fail --silent $SERVICE_URL/ready
+            "
+
+          kubectl wait pod "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE" \
+            --for=jsonpath='{.status.phase}'=Succeeded \
+            --timeout=60s
+
+          kubectl logs "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE"
+
+          kubectl delete pod "$SMOKE_TEST_POD" \
+            --namespace "$K8S_NAMESPACE"

@@ -11,6 +11,12 @@ name: Deploy Incident API
         options:
           - "false"
           - "true"
+      image_tag:
+        description: >-
+          Container image tag to deploy. Defaults to the current commit SHA.
+        required: false
+        default: ""
+        type: string
 
 permissions:
   id-token: write
@@ -61,10 +67,20 @@ jobs:
         id: ecr-login
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Resolve image tag
+        env:
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+          DEFAULT_IMAGE_TAG: ${{ github.sha }}
+        run: |
+          if [ -n "$INPUT_IMAGE_TAG" ]; then
+            echo "IMAGE_TAG=$INPUT_IMAGE_TAG" >> "$GITHUB_ENV"
+          else
+            echo "IMAGE_TAG=$DEFAULT_IMAGE_TAG" >> "$GITHUB_ENV"
+          fi
+
       - name: Build and push Docker image
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           docker build \
             --file "$APP_PATH/Dockerfile" \
@@ -82,7 +98,6 @@ jobs:
       - name: Deploy Incident API with Helm
         env:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
           ENABLE_OBSERVABILITY: ${{ inputs.enable_observability }}
         run: |
           HELM_ARGS=(
