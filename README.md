@@ -89,55 +89,59 @@ GitHub Actions deploy role
 Implemented and validated:
 
 - FastAPI application with `/health`, `/ready`, `/metrics`, and incident endpoints
-- Local Python tests
-- Dockerfile using non-root runtime user
-- Helm chart with probes, resource limits, and Prometheus scrape annotations
+- Local Python tests with pytest
+- Dockerfile using a non-root runtime user
+- Helm chart with probes, resource limits, predictable naming, and optional observability resources
 - Terraform modules for network, EKS, ECR, and IAM/OIDC
 - Separate Terraform bootstrap stack for the remote backend
 - S3 remote Terraform backend with versioning, encryption, public access block, and native lockfile
-- EKS cluster deployed successfully
-- ECR image push validated locally
+- EKS cluster deployed successfully and destroyed after validation sessions
+- ECR image push validated locally and through GitHub Actions OIDC
 - API deployed on EKS through Helm
-- `/health` and `/ready` validated through port-forward
-- Full infrastructure destroy validated
-- GitHub Actions CI for Python, Docker, Helm, and Terraform validation
+- `/health` and `/ready` validated through port-forward and in-cluster smoke tests
+- GitHub Actions CI for Python, Docker, Helm, Terraform, and security validation
 - GitHub OIDC smoke test validated with AWS STS
-- GitHub Actions ECR image push validated through OIDC without static AWS keys
+- GitHub Actions ECR image push validated without static AWS keys
 - Manual Terraform Plan workflow validated through GitHub OIDC
 - Terraform Plan workflow protected against concurrent runs
-- Makefile commands for local validation, observability checks, and CI/CD foundation recovery
-- kube-prometheus-stack deployed on EKS for V2 observability validation
+- Makefile commands for local validation, observability checks, deployment helpers, and cleanup verification
+- kube-prometheus-stack deployed on EKS for observability validation
 - ServiceMonitor-based Prometheus discovery for the Incident API
 - Prometheus scraping validated with PromQL queries
 - Grafana Explore validated with application request-rate metrics
 - Manual Incident API deployment workflow validated through GitHub Actions
-- GitHub Environment `dev` support for controlled deployments
+- GitHub Environment `dev` required reviewer gate configured for deployments
 - Dedicated least-privilege GitHub Actions deploy role
 - EKS access entry for the deploy role mapped to Kubernetes RBAC
 - Namespace-scoped Kubernetes RBAC for application deployment
 - Commit-SHA Docker image tagging from the deployment workflow
+- Optional explicit image tag input for controlled deployments
+- Helm rollback workflow validated with release history and smoke tests
 - In-cluster smoke test validating `/health` and `/ready`
 - V3 deployment troubleshooting and fixes documented
 - Manual deployment workflow validated with observability mode enabled
 - ServiceMonitor creation validated from the deployment workflow
-- Grafana Explore validated after V3 manual deployment
-- Helm `fullnameOverride` support validated for predictable Kubernetes naming
-- Deployment, Service, and ServiceMonitor naming standardized to `incident-api`
-- GitHub Environment `dev` required reviewer gate configured for deployments
+- PrometheusRule alerting rendered through Helm and validated in EKS
+- Incident API alerting validated through Prometheus queries
+- Controlled incident simulation and recovery validated
+- Incident API alert runbook documented
+- Platform self-service onboarding checklist documented
+- FinOps cleanup script validated after infrastructure destroy
+- DevSecOps baseline added with Trivy filesystem scanning in Platform CI
+- Dependabot dependency governance configured and validated through pull requests
 
 ## Continuous Integration
 
-The repository includes GitHub Actions workflows to validate the main project layers on every push and pull request.
-
 | Workflow | Trigger | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | Python CI | Push / Pull request | Installs the FastAPI dependencies and runs the pytest test suite |
 | Docker CI | Push / Pull request | Builds the Incident API Docker image to validate container packaging |
-| Platform CI | Push / Pull request | Validates Helm and Terraform configuration |
+| Platform CI | Push / Pull request | Validates Helm, Terraform, Kubernetes manifests, and security scanning |
 | OIDC Smoke Test | Manual | Validates that GitHub Actions can assume an AWS IAM role through OIDC |
 | ECR Push | Manual | Builds and pushes the Incident API image to Amazon ECR through OIDC |
 | Terraform Plan | Manual | Runs `terraform plan` through OIDC without applying infrastructure changes |
 | Deploy Incident API | Manual | Builds, pushes, deploys, and smoke-tests the API on an existing EKS cluster |
+| Rollback Incident API | Manual | Rolls back the Helm release to a selected revision and runs smoke tests |
 
 Automatic CI checks:
 
@@ -153,8 +157,13 @@ Docker CI
 → docker build
 
 Platform CI
+→ Trivy filesystem scan
 → Helm lint
 → Helm template
+→ ServiceMonitor rendering checks
+→ PrometheusRule rendering checks
+→ Kubernetes RBAC YAML validation
+→ Kubernetes NetworkPolicy YAML validation
 → Terraform fmt check
 → Terraform init without backend
 → Terraform validate
@@ -197,6 +206,127 @@ Deploy Incident API
 → deploy with Helm
 → wait for the Kubernetes rollout
 → run an in-cluster smoke test against /health and /ready
+```
+
+```text
+Rollback Incident API
+→ checkout
+→ assume AWS deploy role through OIDC
+→ verify that the EKS cluster already exists
+→ update kubeconfig
+→ show Helm release history
+→ rollback the Incident API Helm release to a selected revision
+→ wait for the Kubernetes rollout
+→ run an in-cluster smoke test against /health and /ready
+```
+
+## SRE alerting and incident operations
+
+The Incident API chart supports optional Prometheus alert rules through
+`PrometheusRule` resources.
+
+Alerting is disabled by default so the chart can render without Prometheus
+Operator CRDs:
+
+```text
+alerting.enabled = false
+```
+
+Observability mode enables alerting with:
+
+```text
+observability/incident-api-observability-values.yaml
+```
+
+V5 validates four application alerts:
+
+| Alert | Severity | Purpose |
+| --- | --- | --- |
+| `IncidentAPIDown` | critical | Prometheus cannot scrape the API target |
+| `IncidentAPIMetricsMissing` | warning | The application info metric is missing |
+| `IncidentAPIHighRestartCount` | warning | The container restarted recently |
+| `IncidentAPIHigh5xxRate` | critical | The API is returning HTTP 5xx responses |
+
+The alerting path was validated end-to-end:
+
+```text
+Helm values
+→ PrometheusRule rendered
+→ GitHub Actions deploy workflow
+→ PrometheusRule created in EKS
+→ Prometheus Operator validation
+→ Prometheus query validation
+→ controlled incident simulation
+→ recovery validation
+```
+
+The operational runbook is available in:
+
+```text
+docs/runbooks/incident-api-alerts.md
+```
+
+## Release and rollback strategy
+
+V6 adds controlled release operations for the Incident API.
+
+The deployment workflow supports an optional image tag input:
+
+```text
+image_tag
+```
+
+If the field is empty, the workflow deploys the current commit SHA. If the
+field is provided, that tag is used for the image build, push, and Helm
+deployment.
+
+Rollback is handled by a dedicated manual workflow:
+
+```text
+.github/workflows/rollback-incident-api.yml
+```
+
+The rollback workflow uses Helm release history and rolls back to a selected
+revision:
+
+```bash
+helm history incident-api -n incident-api
+helm rollback incident-api <revision> -n incident-api
+```
+
+The rollback path was validated with GitHub Environment approval, Helm
+rollback, Kubernetes rollout status, and in-cluster smoke tests.
+
+## Self-service golden path
+
+V7 defines the project as a reusable platform golden path rather than a
+one-off application deployment.
+
+The onboarding checklist is available in:
+
+```text
+docs/onboarding/new-service-checklist.md
+```
+
+The self-service model is documented in:
+
+```text
+docs/v7-self-service-golden-path.md
+```
+
+The expected service path is:
+
+```text
+code
+→ tests
+→ container image
+→ Helm chart
+→ CI validation
+→ manual deployment
+→ observability
+→ alerting
+→ rollback
+→ runbook
 ```
 
 CI runs automatically, but EKS deployment is intentionally manual. The deployment workflow uses `workflow_dispatch` and can be protected with the GitHub Environment named `dev`.
@@ -737,7 +867,55 @@ Important cost controls in V1:
 - ECR uses `force_delete = true` to support complete cleanup after tests
 - The backend S3 bucket is intentionally persistent because it stores Terraform state
 
-Do not leave the EKS cluster running after tests.
+V8 adds a dedicated cleanup verification script:
+
+```bash
+AWS_PROFILE=tf-eks-golden-path \
+AWS_REGION=eu-west-3 \
+./scripts/check-aws-cleanup.sh
+```
+
+The script verifies that common project cost drivers are removed after
+`terraform destroy`, including EKS, LoadBalancers, NAT Gateways, EC2
+instances, unattached EBS volumes, project Elastic IPs, and ECR state.
+
+The FinOps runbook is available in:
+
+```text
+docs/finops/cost-control-runbook.md
+```
+
+## DevSecOps baseline
+
+V9 adds a lightweight DevSecOps baseline.
+
+Platform CI runs a Trivy filesystem scan against the repository:
+
+```text
+scan-type: fs
+severity: CRITICAL,HIGH
+ignore-unfixed: true
+exit-code: 1
+```
+
+Dependabot is configured in:
+
+```text
+.github/dependabot.yml
+```
+
+It monitors:
+
+- GitHub Actions
+- Python dependencies
+- Terraform dependencies
+- Docker base images
+
+The DevSecOps design note is available in:
+
+```text
+docs/v9-devsecops.md
+```
 
 ## Security notes
 
@@ -766,20 +944,58 @@ Current security decisions:
 
 ## Roadmap
 
-Next iterations:
+Completed versions:
 
-- Add a V3 release note and tag `v3.0.0`
-- Add frontend demo application
-- Add least-privilege custom IAM policy for Terraform Plan
+| Version | Focus |
+| --- | --- |
+| V1 | Platform foundation |
+| V2 | Kubernetes observability |
+| V3 | Controlled manual deployment automation |
+| V4 | Production-grade hardening |
+| V5 | SRE alerting and incident operations |
+| V6 | Controlled release and rollback strategy |
+| V7 | Self-service golden path |
+| V8 | FinOps and cleanup governance |
+| V9 | DevSecOps scanning and dependency governance |
+
+Final polish:
+
+- improve README structure and presentation
+- add an architecture diagram
+- add a project walkthrough document
+- prepare final release note `v10.0.0`
 
 ## Status
 
-V1 validates the platform foundation: FastAPI, Docker, ECR, Terraform, EKS, Helm, GitHub Actions, GitHub OIDC, S3 remote backend, and cost-aware cleanup.
+V1 validates the platform foundation: FastAPI, Docker, ECR, Terraform, EKS,
+Helm, GitHub Actions, GitHub OIDC, S3 remote backend, and cost-aware cleanup.
 
-V2 validates Kubernetes observability with kube-prometheus-stack, Prometheus, Grafana, ServiceMonitor discovery, Prometheus scraping, and Grafana Explore visualization.
+V2 validates Kubernetes observability with kube-prometheus-stack, Prometheus,
+Grafana, ServiceMonitor discovery, Prometheus scraping, and Grafana Explore
+visualization.
 
-V3 validates controlled manual deployment automation. CI runs automatically, but application deployment is triggered manually through GitHub Actions. The workflow assumes a least-privilege AWS role through OIDC, deploys only to an existing EKS cluster, pushes commit-tagged images to ECR, deploys with Helm, and validates the application with an in-cluster smoke test. The same workflow has also been validated with observability mode enabled, including ServiceMonitor creation, Prometheus scraping, and Grafana Explore queries.
+V3 validates controlled manual deployment automation through GitHub Actions,
+OIDC, Helm, commit-tagged images, and in-cluster smoke tests.
 
-V4 has started with production-grade hardening. V4.1 standardizes Helm resource naming with `fullnameOverride`, and V4.2 protects the manual deployment workflow through GitHub Environment required reviewers.
+V4 adds production-grade hardening with predictable Helm names, GitHub
+Environment approval, namespace-scoped deploy RBAC, and NetworkPolicy
+validation.
 
-The current project demonstrates a secure, cost-aware, and interview-ready platform golden path from application code to EKS deployment, observability validation, and full AWS cleanup.
+V5 adds SRE alerting with PrometheusRule resources, Prometheus validation,
+controlled incident simulation, recovery validation, and an alert runbook.
+
+V6 adds controlled release operations with optional explicit image tags and a
+validated Helm rollback workflow.
+
+V7 defines the platform as a reusable self-service golden path with an
+onboarding checklist and service contract.
+
+V8 adds FinOps cleanup governance with a post-destroy AWS cleanup verification
+script and cost-control runbook.
+
+V9 adds DevSecOps scanning and dependency governance with Trivy and
+Dependabot.
+
+The current project demonstrates a secure, cost-aware, and production-inspired
+platform golden path from application code to EKS deployment, observability,
+alerting, rollback, DevSecOps validation, and full AWS cleanup.
