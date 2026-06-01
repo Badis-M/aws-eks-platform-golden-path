@@ -1,5 +1,3 @@
-
-
 # V4 Production-Grade Hardening
 
 V4 improves the AWS EKS Platform Golden Path after the validated V3 manual

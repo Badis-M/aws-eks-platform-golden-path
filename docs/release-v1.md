@@ -1,5 +1,3 @@
-
-
 # Release V1 Summary
 
 ## Purpose

@@ -1,5 +1,3 @@
-
-
 # V7 Self-Service Golden Path
 
 V7 turns the AWS EKS Platform Golden Path into a reusable platform model.
