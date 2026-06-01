@@ -7,6 +7,8 @@ PROJECT_NAME="${PROJECT_NAME:-aws-eks-platform-golden-path}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 CLUSTER_NAME="${CLUSTER_NAME:-${PROJECT_NAME}-${ENVIRONMENT}-eks}"
 ECR_REPOSITORY_NAME="${ECR_REPOSITORY_NAME:-incident-api}"
+PROJECT_TAG_KEY="${PROJECT_TAG_KEY:-Project}"
+ENVIRONMENT_TAG_KEY="${ENVIRONMENT_TAG_KEY:-Environment}"
 
 export AWS_PAGER=""
 
@@ -130,20 +132,38 @@ check_unattached_ebs_volumes_absent() {
 }
 
 check_elastic_ips_absent() {
-  info "Checking Elastic IPs"
+  info "Checking project Elastic IPs"
 
-  local eip_count
-  eip_count="$(aws_cli ec2 describe-addresses --query 'length(Addresses)' --output text)"
+  local project_eip_count
+  project_eip_count="$(aws_cli ec2 describe-addresses \
+    --filters \
+      "Name=tag:${PROJECT_TAG_KEY},Values=${PROJECT_NAME}" \
+      "Name=tag:${ENVIRONMENT_TAG_KEY},Values=${ENVIRONMENT}" \
+    --query 'length(Addresses)' \
+    --output text)"
 
-  if [ "$eip_count" != "0" ]; then
-    warn "Elastic IPs still exist"
+  if [ "$project_eip_count" != "0" ]; then
+    warn "Project Elastic IPs still exist"
+    aws_cli ec2 describe-addresses \
+      --filters \
+        "Name=tag:${PROJECT_TAG_KEY},Values=${PROJECT_NAME}" \
+        "Name=tag:${ENVIRONMENT_TAG_KEY},Values=${ENVIRONMENT}" \
+      --query 'Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId,Tags:Tags}' \
+      --output table
+    fail "Release project Elastic IPs before considering cleanup complete"
+  fi
+
+  local account_eip_count
+  account_eip_count="$(aws_cli ec2 describe-addresses --query 'length(Addresses)' --output text)"
+
+  if [ "$account_eip_count" != "0" ]; then
+    warn "Non-project Elastic IPs exist in ${AWS_REGION}; ignored by project cleanup check"
     aws_cli ec2 describe-addresses \
       --query 'Addresses[].{PublicIp:PublicIp,AllocationId:AllocationId,AssociationId:AssociationId}' \
       --output table
-    fail "Release unused Elastic IPs before considering cleanup complete"
   fi
 
-  pass "No Elastic IPs found"
+  pass "No project Elastic IPs found"
 }
 
 check_ecr_repository_state() {
