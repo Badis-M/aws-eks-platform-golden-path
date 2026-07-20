@@ -18,3 +18,7 @@ crash.*.log
 # macOS
 .DS_Store
 
+
+# Local Codex context
+/AGENTS.md
+/docs/PROJECT_CONTEXT.md
